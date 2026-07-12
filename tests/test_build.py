@@ -1,4 +1,4 @@
-"""Self-check for ontomap.build - runnable directly: python tests/test_build.py"""
+"""Self-check for codelens.build - runnable directly: python tests/test_build.py"""
 import json
 import sys
 import tempfile
@@ -6,7 +6,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from ontomap.build import (
+from codelens.build import (
     build_ontology, discover_domain_words, symbol_digest, _external_imports,
     _compute_impact,
 )

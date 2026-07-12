@@ -1,15 +1,15 @@
-"""Self-check for ontomap.insights + ontomap.diff - runnable directly."""
+"""Self-check for codelens.insights + codelens.diff - runnable directly."""
 import sys
 from collections import Counter
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from ontomap.insights import (
+from codelens.insights import (
     blast_radius, compute_hotspots, hotspots_json, impact_check_report, match_paths,
     collect_files,
 )
-from ontomap.diff import diff_ontology, format_diff
+from codelens.diff import diff_ontology, format_diff
 
 
 def _onto(extra_files=(), rels=None, impact=None):

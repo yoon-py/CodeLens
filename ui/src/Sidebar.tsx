@@ -40,7 +40,7 @@ export function Sidebar() {
   return (
     <aside className="sidebar">
       <div className="brand">
-        <span className="brand-mark">◆</span> ontomap
+        <span className="brand-mark">◆</span> codelens
       </div>
 
       <div className="side-section">

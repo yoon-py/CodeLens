@@ -77,7 +77,7 @@ def diff_ontology(old: dict, new: dict) -> dict:
 
 
 def format_diff(d: dict) -> str:
-    lines = ["ontomap diff"]
+    lines = ["codelens diff"]
     empty = True
 
     def sec(title, rows):

@@ -1,4 +1,4 @@
-# ontomap
+# codelens
 
 C4-style ontology layer on top of [graphify](https://github.com/Graphify-Labs/graphify)'s `graph.json`.
 
@@ -16,20 +16,20 @@ relationship edges, detail panel with metrics and change-impact analysis.
 
 ```bash
 # 0. once: install (from this repo)
-uv tool install --editable ./ontomap
-(cd ontomap/ui && npm install && npm run build)
+uv tool install --editable ./codelens
+(cd codelens/ui && npm install && npm run build)
 
 # 1. build the code graph with graphify (writes graphify-out/graph.json)
 graphify .
 
 # 2. build the ontology
-ontomap build --prefix myproject/ --name myproject
+codelens build --prefix myproject/ --name myproject
 
 # 3. open the map
-ontomap serve
+codelens serve
 ```
 
-`ontomap serve --watch` keeps the map fresh: when graphify rewrites
+`codelens serve --watch` keeps the map fresh: when graphify rewrites
 `graph.json` (its `--watch` mode or commit hook), the ontology is rebuilt
 automatically and the browser picks it up within seconds.
 
@@ -37,28 +37,28 @@ automatically and the browser picks it up within seconds.
 
 | command | what it does |
 |---|---|
-| `ontomap build --prefix p/ --name x [--enrichment e.json] [--tree]` | graph.json → ontology.json; saves config for `sync` |
-| `ontomap sync` | rebuild using the saved config |
-| `ontomap sync --watch` | poll graph.json, rebuild ontology on change |
-| `ontomap serve [--watch] [--port N]` | serve UI + ontology.json (+ graph.html, hotspots.json), open browser |
-| `ontomap symbols --prefix p/ [--changed]` | per-file symbol digest for agent enrichment (hash-cached) |
-| `ontomap tree ontology.json` | pretty-print an ontology |
-| `ontomap mcp [--ontology o.json]` | MCP server (stdio, zero-dep): `overview` / `search` / `component` / `impact` tools for agents |
-| `ontomap impact-check [--repo r] [--files ...]` | blast radius of staged files - informational, never blocks; `--install-hook` writes a pre-commit hook |
-| `ontomap hotspots [--repo r] [--since "6 months ago"]` | git churn + co-change joined onto the ontology; flags co-changed pairs with **no** structural edge (hidden coupling); feeds the UI heatmap |
-| `ontomap diff old.json new.json [--json]` | structural diff: components/files added/removed, relationship count deltas, blast-radius changes - the engine for PR architecture reports |
+| `codelens build --prefix p/ --name x [--enrichment e.json] [--tree]` | graph.json → ontology.json; saves config for `sync` |
+| `codelens sync` | rebuild using the saved config |
+| `codelens sync --watch` | poll graph.json, rebuild ontology on change |
+| `codelens serve [--watch] [--port N]` | serve UI + ontology.json (+ graph.html, hotspots.json), open browser |
+| `codelens symbols --prefix p/ [--changed]` | per-file symbol digest for agent enrichment (hash-cached) |
+| `codelens tree ontology.json` | pretty-print an ontology |
+| `codelens mcp [--ontology o.json]` | MCP server (stdio, zero-dep): `overview` / `search` / `component` / `impact` tools for agents |
+| `codelens impact-check [--repo r] [--files ...]` | blast radius of staged files - informational, never blocks; `--install-hook` writes a pre-commit hook |
+| `codelens hotspots [--repo r] [--since "6 months ago"]` | git churn + co-change joined onto the ontology; flags co-changed pairs with **no** structural edge (hidden coupling); feeds the UI heatmap |
+| `codelens diff old.json new.json [--json]` | structural diff: components/files added/removed, relationship count deltas, blast-radius changes - the engine for PR architecture reports |
 
 ## Git integration
 
 ```bash
 # pre-commit: see the blast radius before you commit (never blocks)
-ontomap impact-check --install-hook --repo . --ontology graphify-out/ontology.json
+codelens impact-check --install-hook --repo . --ontology graphify-out/ontology.json
 
 # architecture time machine: churn heatmap + hidden coupling
-ontomap hotspots --repo . && ontomap serve   # then toggle "Show Hotspots"
+codelens hotspots --repo . && codelens serve   # then toggle "Show Hotspots"
 
 # PR report core: diff two builds
-ontomap diff main-ontology.json feature-ontology.json
+codelens diff main-ontology.json feature-ontology.json
 ```
 
 ## Design

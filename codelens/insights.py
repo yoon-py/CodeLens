@@ -101,7 +101,7 @@ def impact_check_report(onto: dict, changed_paths: list[str]) -> str:
             lines.append(f"    components affected: {', '.join(comps)}")
     if not lines:
         return ""
-    header = "ontomap impact-check (informational, never blocks):"
+    header = "codelens impact-check (informational, never blocks):"
     return "\n".join([header, *lines])
 
 
@@ -114,8 +114,8 @@ def git_staged(repo: str) -> list[str]:
 
 
 HOOK_BODY = """#!/bin/sh
-# installed by `ontomap impact-check --install-hook` - informational only
-ontomap impact-check --ontology {ontology} --repo "$(git rev-parse --show-toplevel)" || true
+# installed by `codelens impact-check --install-hook` - informational only
+codelens impact-check --ontology {ontology} --repo "$(git rev-parse --show-toplevel)" || true
 exit 0
 """
 
@@ -126,10 +126,10 @@ def install_hook(repo: str, ontology: str) -> str:
         raise SystemExit(f"{hooks} not found - is {repo} a git repository?")
     target = hooks / "pre-commit"
     body = HOOK_BODY.format(ontology=Path(ontology).resolve())
-    if target.exists() and "ontomap impact-check" not in target.read_text(encoding="utf-8"):
+    if target.exists() and "codelens impact-check" not in target.read_text(encoding="utf-8"):
         raise SystemExit(
             f"{target} already exists and is not ours - append this line yourself:\n"
-            f"  ontomap impact-check --ontology {Path(ontology).resolve()}"
+            f"  codelens impact-check --ontology {Path(ontology).resolve()}"
         )
     target.write_text(body, encoding="utf-8")
     target.chmod(0o755)

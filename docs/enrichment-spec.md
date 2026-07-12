@@ -1,23 +1,23 @@
-# ontomap enrichment spec (for host agents)
+# codelens enrichment spec (for host agents)
 
-When a codebase is a flat package (many files in one directory), ontomap's
+When a codebase is a flat package (many files in one directory), codelens's
 path-based heuristics cannot infer Components. A host agent (Claude, Copilot,
-any LLM agent running ontomap) fills the gap by classifying files into
+any LLM agent running codelens) fills the gap by classifying files into
 components from their **symbol digests** - never from full file contents.
 
 ## Workflow
 
 ```bash
 # 1. emit the per-file symbol digest (rel_path -> symbol labels)
-ontomap symbols --graph graphify-out/graph.json --prefix mypkg/ > symbols.json
+codelens symbols --graph graphify-out/graph.json --prefix mypkg/ > symbols.json
 
 # incremental: only files whose symbols changed since the last run
-ontomap symbols --graph graphify-out/graph.json --prefix mypkg/ --changed
+codelens symbols --graph graphify-out/graph.json --prefix mypkg/ --changed
 
 # 2. the agent reads symbols.json and writes enrichment.json (schema below)
 
 # 3. build with the enrichment
-ontomap build --graph graphify-out/graph.json --prefix mypkg/ \
+codelens build --graph graphify-out/graph.json --prefix mypkg/ \
   --name mypkg --enrichment enrichment.json --tree
 ```
 

@@ -1,4 +1,4 @@
-"""CLI: ontomap build | sync | serve | symbols | tree | mcp | impact-check | hotspots | diff."""
+"""CLI: codelens build | sync | serve | symbols | tree | mcp | impact-check | hotspots | diff."""
 from __future__ import annotations
 
 import argparse
@@ -11,8 +11,8 @@ from pathlib import Path
 
 from .build import build_ontology, load_enrichment, symbol_digest
 
-CONFIG_NAME = ".ontomap_config.json"
-SYMCACHE_NAME = ".ontomap_symbols_cache.json"
+CONFIG_NAME = ".codelens_config.json"
+SYMCACHE_NAME = ".codelens_symbols_cache.json"
 
 
 def _load_graph(path: str) -> dict:
@@ -61,7 +61,7 @@ def cmd_build(args) -> None:
         "enrichment": args.enrichment, "output": args.output,
     }
     onto = _run_build(cfg)
-    # persist config so `ontomap sync` / `ontomap serve --watch` can rebuild
+    # persist config so `codelens sync` / `codelens serve --watch` can rebuild
     _config_path(args.graph).write_text(
         json.dumps(cfg, indent=2, ensure_ascii=False), encoding="utf-8"
     )
@@ -72,7 +72,7 @@ def cmd_build(args) -> None:
 def _load_config(graph_path: str) -> dict:
     p = _config_path(graph_path)
     if not p.exists():
-        sys.exit(f"no saved config at {p} - run `ontomap build` once first")
+        sys.exit(f"no saved config at {p} - run `codelens build` once first")
     return json.loads(p.read_text(encoding="utf-8"))
 
 
@@ -118,12 +118,12 @@ def cmd_serve(args) -> None:
 
     dist = _ui_dist()
     if dist is None:
-        sys.exit("UI not built - run `npm run build` in ontomap/ui first")
+        sys.exit("UI not built - run `npm run build` in codelens/ui first")
     onto_path = Path(args.ontology)
     if not onto_path.exists():
-        sys.exit(f"{onto_path} not found - run `ontomap build` first")
+        sys.exit(f"{onto_path} not found - run `codelens build` first")
     graph_html = onto_path.parent / "graph.html"  # graphify's raw code graph (Code Graph tab)
-    hotspots_path = onto_path.parent / "hotspots.json"  # optional: `ontomap hotspots` output
+    hotspots_path = onto_path.parent / "hotspots.json"  # optional: `codelens hotspots` output
     # injected when serving graph.html: ?q=<label> focuses the matching node using
     # the globals graphify's page already exposes (RAW_NODES, focusNode)
     focus_loader = b"""<script>
@@ -161,7 +161,7 @@ def cmd_serve(args) -> None:
                 if hotspots_path.exists():
                     self._serve_bytes(hotspots_path.read_bytes(), "application/json")
                 else:
-                    self.send_error(404, "no hotspots.json - run `ontomap hotspots` first")
+                    self.send_error(404, "no hotspots.json - run `codelens hotspots` first")
                 return
             if route == "/graph.html":
                 if graph_html.exists():
@@ -266,7 +266,7 @@ def cmd_diff(args) -> None:
 
 
 def main(argv: list[str] | None = None) -> None:
-    ap = argparse.ArgumentParser(prog="ontomap", description=__doc__)
+    ap = argparse.ArgumentParser(prog="codelens", description=__doc__)
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     common = argparse.ArgumentParser(add_help=False)
@@ -310,7 +310,7 @@ def main(argv: list[str] | None = None) -> None:
 
     m = sub.add_parser("mcp", help="MCP server over stdio - agents query the ontology")
     m.add_argument("--ontology", default="graphify-out/ontology.json")
-    m.set_defaults(fn=lambda a: __import__("ontomap.mcp", fromlist=["serve"]).serve(a.ontology))
+    m.set_defaults(fn=lambda a: __import__("codelens.mcp", fromlist=["serve"]).serve(a.ontology))
 
     ic = sub.add_parser("impact-check",
                         help="blast radius of staged files (pre-commit, informational)")

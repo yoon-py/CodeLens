@@ -1,16 +1,16 @@
 [project]
-name = "ontomap"
+name = "codelens"
 version = "0.1.0"
 description = "Infer a C4-style ontology (Product > Feature > Component > Module > File) from a graphify graph.json"
 requires-python = ">=3.10"
 dependencies = []
 
 [project.scripts]
-ontomap = "ontomap.__main__:main"
+codelens = "codelens.__main__:main"
 
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-include = ["ontomap*"]
+include = ["codelens*"]

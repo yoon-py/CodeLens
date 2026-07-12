@@ -8,8 +8,8 @@ JSON-RPC 2.0). Exposes four tools over a built ontology.json:
   component  - full detail for one component (files, relationships, impact)
   impact     - "if I modify X, what is affected?"
 
-Run: ontomap mcp [--ontology graphify-out/ontology.json]
-Register (Claude Code): claude mcp add ontomap -- ontomap mcp --ontology /abs/path/ontology.json
+Run: codelens mcp [--ontology graphify-out/ontology.json]
+Register (Claude Code): claude mcp add codelens -- codelens mcp --ontology /abs/path/ontology.json
 """
 from __future__ import annotations
 
@@ -198,7 +198,7 @@ def _handle(onto: Onto, req: dict) -> dict | None:
         result = {
             "protocolVersion": PROTOCOL_VERSION,
             "capabilities": {"tools": {}},
-            "serverInfo": {"name": "ontomap", "version": "0.1.0"},
+            "serverInfo": {"name": "codelens", "version": "0.1.0"},
         }
     elif method == "tools/list":
         result = {"tools": [
@@ -229,7 +229,7 @@ def _handle(onto: Onto, req: dict) -> dict | None:
 def serve(ontology_path: str) -> None:
     path = Path(ontology_path)
     if not path.exists():
-        sys.exit(f"{path} not found - run `ontomap build` first")
+        sys.exit(f"{path} not found - run `codelens build` first")
     onto = Onto(path)
     for line in sys.stdin:
         line = line.strip()
