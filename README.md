@@ -23,19 +23,16 @@ relationship edges, detail panel with metrics and change-impact analysis.
 ## Quick start
 
 ```bash
-# 0. once: install (from this repo)
+# once: install (from this repo)
 uv tool install --editable ./lensme
 (cd lensme/ui && npm install && npm run build)
 
-# 1. build the code graph with graphify (writes graphify-out/graph.json)
-graphify .
-
-# 2. build the ontology
-lensme build --prefix myproject/ --name myproject
-
-# 3. open the map
-lensme serve
+# one command: extract (graphify) + build ontology + open the map
+lensme scan .
 ```
+
+Or step by step: `graphify .` then `lensme build --name myproject` then
+`lensme serve`.
 
 `lensme serve --watch` keeps the map fresh: when graphify rewrites
 `graph.json` (its `--watch` mode or commit hook), the ontology is rebuilt
@@ -45,13 +42,18 @@ automatically and the browser picks it up within seconds.
 
 | command | what it does |
 |---|---|
+| `lensme scan [path]` | one command: graphify extract + build + serve |
+| `lensme report [-o ARCHITECTURE.md]` | living architecture doc: structure, relationships, externals, blast radius, hotspots |
+| `lensme path A B` | shortest relationship path between two nodes (component or file level) |
+| `lensme explain X` | everything known about one node: symbols, owner chain, edges |
+| `lensme merge a.json b.json --name org` | System-level view across repos, with shared externals |
 | `lensme build --prefix p/ --name x [--enrichment e.json] [--tree]` | graph.json → ontology.json; saves config for `sync` |
 | `lensme sync` | rebuild using the saved config |
 | `lensme sync --watch` | poll graph.json, rebuild ontology on change |
 | `lensme serve [--watch] [--port N]` | serve UI + ontology.json (+ graph.html, hotspots.json), open browser |
 | `lensme symbols --prefix p/ [--changed]` | per-file symbol digest for agent enrichment (hash-cached) |
 | `lensme tree ontology.json` | pretty-print an ontology |
-| `lensme mcp [--ontology o.json]` | MCP server (stdio, zero-dep): `get_context` / `overview` / `search` / `component` / `impact` tools for agents |
+| `lensme mcp [--ontology o.json]` | MCP server (stdio, zero-dep): `get_context` / `overview` / `search` / `component` / `impact` / `path` / `explain` tools for agents |
 | `lensme impact-check [--repo r] [--files ...]` | blast radius of staged files - informational, never blocks; `--install-hook` writes a pre-commit hook |
 | `lensme hotspots [--repo r] [--since "6 months ago"]` | git churn + co-change joined onto the ontology; flags co-changed pairs with **no** structural edge (hidden coupling); feeds the UI heatmap |
 | `lensme diff old.json new.json [--json]` | structural diff: components/files added/removed, relationship count deltas, blast-radius changes - the engine for PR architecture reports |

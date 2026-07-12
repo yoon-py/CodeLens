@@ -1,7 +1,7 @@
 """MCP server over stdio: agents query the ontology for architecture context.
 
 Zero-dependency JSON-RPC loop (MCP stdio transport is newline-delimited
-JSON-RPC 2.0). Exposes five tools over a built ontology.json:
+JSON-RPC 2.0). Exposes seven tools over a built ontology.json:
 
   get_context - task-scoped bundle (files, symbols, deps, blast radius) in one
                 call, trimmed to a token budget - replaces ls/grep exploration
@@ -9,6 +9,8 @@ JSON-RPC 2.0). Exposes five tools over a built ontology.json:
   search      - find any node by name/path, with its ownership chain
   component   - full detail for one component (files, relationships, impact)
   impact      - "if I modify X, what is affected?"
+  path        - shortest relationship path between two nodes with directions
+  explain     - everything known about one node (component or file)
 
 Run: lensme mcp [--ontology graphify-out/ontology.json]
 Register (Claude Code): claude mcp add lensme -- lensme mcp --ontology /abs/path/ontology.json
@@ -263,6 +265,83 @@ def tool_get_context(onto: Onto, args: dict) -> dict:
     return out
 
 
+def _resolve_any(onto: Onto, ref: str) -> dict | None:
+    """Component by name/id, else File by path/name substring (exact wins)."""
+    comp = _resolve_component(onto, ref)
+    if comp is not None:
+        return comp
+    ref_l = ref.lower()
+    files = [e["node"] for e in onto.index().values() if e["node"]["type"] == "File"]
+    exact = [f for f in files if f["name"].lower() == ref_l or (f.get("path") or "").lower() == ref_l]
+    partial = [f for f in files if ref_l in (f.get("path") or f["name"]).lower()]
+    return (exact or partial or [None])[0]
+
+
+def tool_path(onto: Onto, args: dict) -> dict:
+    """Shortest relationship path between two nodes. Component pair -> walk
+    component_relationships; anything else -> walk file_relationships.
+    Edges are traversed both ways; each hop reports its real direction."""
+    a, b = _resolve_any(onto, args["from"]), _resolve_any(onto, args["to"])
+    if a is None or b is None:
+        missing = args["from"] if a is None else args["to"]
+        return {"error": f"no node matching {missing!r} - try the search tool"}
+    d = onto.data()
+    level = "component" if a["type"] == b["type"] == "Component" else "file"
+    rels = d.get(f"{level}_relationships", [])
+
+    adj: dict[str, list[tuple[str, str, bool]]] = {}
+    for r in rels:
+        adj.setdefault(r["source"], []).append((r["target"], r["relation"], True))
+        adj.setdefault(r["target"], []).append((r["source"], r["relation"], False))
+
+    prev: dict[str, tuple[str, str, bool]] = {a["id"]: ("", "", True)}
+    frontier = [a["id"]]
+    while frontier and b["id"] not in prev:
+        nxt = []
+        for nid in frontier:
+            for tgt, rel, fwd in adj.get(nid, ()):
+                if tgt not in prev:
+                    prev[tgt] = (nid, rel, fwd)
+                    nxt.append(tgt)
+        frontier = nxt
+    if b["id"] not in prev:
+        return {"from": a["name"], "to": b["name"], "level": level, "path": None,
+                "note": "no relationship path found"}
+    hops, cur = [], b["id"]
+    while cur != a["id"]:
+        src, rel, fwd = prev[cur]
+        hops.append({"from": onto.name_of(src if fwd else cur), "relation": rel,
+                     "to": onto.name_of(cur if fwd else src)})
+        cur = src
+    return {"from": a["name"], "to": b["name"], "level": level,
+            "hops": len(hops), "path": list(reversed(hops))}
+
+
+def tool_explain(onto: Onto, args: dict) -> dict:
+    """Everything known about one node: detail for a Component, or for a File
+    its symbols, owner chain, and file-level in/out edges."""
+    n = _resolve_any(onto, args["name"])
+    if n is None:
+        return {"error": f"no node matching {args['name']!r} - try the search tool"}
+    if n["type"] == "Component":
+        return tool_component(onto, {"component": n["id"]})
+    d = onto.data()
+    frs = d.get("file_relationships", [])
+    chain = onto.index()[n["id"]]["chain"]
+    return {
+        **_brief(n),
+        "path": n.get("path"),
+        "loc": n.get("loc"),
+        "owned_by": [{"type": a["type"], "name": a["name"]} for a in chain
+                     if a["type"] != "Product"],
+        "symbols": n.get("symbols", []),
+        "outgoing": [{"relation": r["relation"], "target": onto.name_of(r["target"]),
+                      "count": r.get("count", 1)} for r in frs if r["source"] == n["id"]],
+        "incoming": [{"relation": r["relation"], "source": onto.name_of(r["source"]),
+                      "count": r.get("count", 1)} for r in frs if r["target"] == n["id"]],
+    }
+
+
 TOOLS = {
     "get_context": (tool_get_context, "Task-scoped context bundle in ONE call: the owning component, ranked files with symbols, read-first suggestions, dependencies/dependents, and blast radius - trimmed to a token budget. Use this INSTEAD of exploring with ls/grep/find when starting a task.", {
         "type": "object",
@@ -290,6 +369,19 @@ TOOLS = {
         "type": "object",
         "properties": {"component": {"type": "string", "description": "component name or id"}},
         "required": ["component"],
+    }),
+    "path": (tool_path, "Shortest relationship path between two nodes (components or files), with the relation and direction of every hop.", {
+        "type": "object",
+        "properties": {
+            "from": {"type": "string", "description": "component/file name or path"},
+            "to": {"type": "string", "description": "component/file name or path"},
+        },
+        "required": ["from", "to"],
+    }),
+    "explain": (tool_explain, "Everything known about one node: component detail, or for a file its symbols, owner chain, and file-level in/out edges.", {
+        "type": "object",
+        "properties": {"name": {"type": "string", "description": "component/file name or path"}},
+        "required": ["name"],
     }),
 }
 

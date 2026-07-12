@@ -7,7 +7,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from lensme.build import build_ontology
-from lensme.mcp import Onto, tool_get_context, tool_search
+from lensme.mcp import Onto, tool_explain, tool_get_context, tool_path, tool_search
 from tests.test_build import _graph
 
 
@@ -52,6 +52,41 @@ def test_get_context_by_component():
         out = tool_get_context(o, {"component": "component_billing_store"})
         assert out["component"]["id"] == "component_billing_store"
         assert out["dependents"], "billing store has an incoming depends_on edge"
+
+
+def test_path_file_level():
+    with tempfile.TemporaryDirectory() as td:
+        o = _onto(Path(td))
+        # Invoice.tsx -imports-> billingStore -imports_from-> billingApi
+        out = tool_path(o, {"from": "Invoice.tsx", "to": "billingApi.ts"})
+        assert out["level"] == "file" and out["hops"] == 2, out
+        assert out["path"][0]["relation"] == "depends_on"
+        # reverse direction still finds the path (undirected traversal)
+        back = tool_path(o, {"from": "billingApi.ts", "to": "Invoice.tsx"})
+        assert back["hops"] == 2
+        # unreachable pair reports no path, not an error
+        none = tool_path(o, {"from": "Invoice.tsx", "to": "ordersApi.ts"})
+        assert none["path"] is None
+
+
+def test_path_component_level():
+    with tempfile.TemporaryDirectory() as td:
+        o = _onto(Path(td))
+        out = tool_path(o, {"from": "component_billing_components",
+                            "to": "component_billing_services"})
+        assert out["level"] == "component" and out["hops"] == 2, out
+
+
+def test_explain_file_and_component():
+    with tempfile.TemporaryDirectory() as td:
+        o = _onto(Path(td))
+        f = tool_explain(o, {"name": "Invoice.tsx"})
+        assert f["type"] == "File" and f["symbols"], f
+        assert any(r["relation"] == "depends_on" for r in f["outgoing"])
+        assert f["owned_by"], "file must report its owner chain"
+        c = tool_explain(o, {"name": "component_billing_store"})
+        assert c["type"] == "Component" and "files" in c
+        assert "error" in tool_explain(o, {"name": "nonexistent-zzz"})
 
 
 def test_search_still_works():

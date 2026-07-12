@@ -1,4 +1,4 @@
-"""CLI: lensme build | sync | serve | symbols | tree | mcp | impact-check | hotspots | diff."""
+"""CLI: lensme scan | build | sync | serve | report | path | explain | symbols | tree | mcp | impact-check | hotspots | diff | merge."""
 from __future__ import annotations
 
 import argparse
@@ -210,6 +210,102 @@ def cmd_serve(args) -> None:
         print("\nstopped")
 
 
+def cmd_scan(args) -> None:
+    """The single entry point: extract (graphify) + build + serve in one command."""
+    import shutil
+    import subprocess
+
+    root = Path(args.path).resolve()
+    graph = root / "graphify-out" / "graph.json"
+    gf = shutil.which("graphify")
+    if not args.skip_extract and gf:
+        print("extracting code graph (graphify update)...")
+        subprocess.run([gf, "update", str(root)], check=True)
+    elif not graph.exists():
+        sys.exit(
+            "graphify not found and no existing graph.json.\n"
+            "install graphify first: https://github.com/Graphify-Labs/graphify"
+        )
+    else:
+        print(f"graphify not run - using existing {graph}")
+
+    cfg = {
+        "graph": str(graph), "prefix": "", "root": str(root),
+        "name": args.name or root.name, "description": "",
+        "enrichment": None, "output": str(graph.parent / "ontology.json"),
+    }
+    _run_build(cfg)
+    _config_path(str(graph)).write_text(
+        json.dumps(cfg, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
+    args.graph, args.ontology = str(graph), cfg["output"]
+    cmd_serve(args)
+
+
+def cmd_report(args) -> None:
+    from .report import generate_report
+
+    onto = json.loads(Path(args.ontology).read_text(encoding="utf-8"))
+    hotspots_path = Path(args.ontology).parent / "hotspots.json"
+    hotspots = (json.loads(hotspots_path.read_text(encoding="utf-8"))
+                if hotspots_path.exists() else None)
+    md = generate_report(onto, hotspots)
+    if args.output == "-":
+        print(md)
+    else:
+        Path(args.output).write_text(md, encoding="utf-8")
+        print(f"wrote {args.output}")
+
+
+def _cli_onto(ontology: str):
+    from .mcp import Onto
+
+    p = Path(ontology)
+    if not p.exists():
+        sys.exit(f"{p} not found - run `lensme build` first")
+    return Onto(p)
+
+
+def cmd_path(args) -> None:
+    from .mcp import tool_path
+
+    out = tool_path(_cli_onto(args.ontology), {"from": args.src, "to": args.dst})
+    if out.get("error"):
+        sys.exit(out["error"])
+    if out.get("path") is None:
+        print(f"{out['from']} -/-> {out['to']}: no relationship path ({out['level']} level)")
+        return
+    print(f"{out['from']} -> {out['to']} ({out['level']} level, {out['hops']} hops)")
+    for h in out["path"]:
+        print(f"  {h['from']} -[{h['relation']}]-> {h['to']}")
+
+
+def cmd_explain(args) -> None:
+    from .mcp import tool_explain
+
+    out = tool_explain(_cli_onto(args.ontology), {"name": args.name})
+    if out.get("error"):
+        sys.exit(out["error"])
+    json.dump(out, sys.stdout, indent=2, ensure_ascii=False)
+    print()
+
+
+def cmd_merge(args) -> None:
+    from .merge import merge_ontologies
+
+    ontos = [json.loads(Path(p).read_text(encoding="utf-8")) for p in args.ontologies]
+    system = merge_ontologies(ontos, args.name, args.description)
+    Path(args.output).write_text(
+        json.dumps(system, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
+    print(f"wrote {args.output}")
+    print(json.dumps(system["stats"]))
+    for s in system["shared_externals"]:
+        print(f"  shared: {s['name']} <- {', '.join(s['products'])}")
+    if args.tree:
+        print_tree(system)
+
+
 def cmd_symbols(args) -> None:
     digest = symbol_digest(_load_graph(args.graph), args.prefix)
     cache_path = Path(args.graph).parent / SYMCACHE_NAME
@@ -277,6 +373,16 @@ def main(argv: list[str] | None = None) -> None:
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument("--graph", default="graphify-out/graph.json", help="path to graphify graph.json")
 
+    sc = sub.add_parser("scan", help="one command: extract (graphify) + build + serve")
+    sc.add_argument("path", nargs="?", default=".", help="repo to map (default: cwd)")
+    sc.add_argument("--name", default=None, help="product name (default: directory name)")
+    sc.add_argument("--port", type=int, default=4173)
+    sc.add_argument("--no-open", action="store_true", help="do not open a browser")
+    sc.add_argument("--skip-extract", action="store_true", help="reuse existing graph.json")
+    sc.add_argument("--watch", action="store_true", help="rebuild when graph.json changes")
+    sc.add_argument("--interval", type=float, default=2.0)
+    sc.set_defaults(fn=cmd_scan)
+
     b = sub.add_parser("build", parents=[common], help="build ontology.json from graph.json")
     b.add_argument("--prefix", default="", help="source_file prefix to scope to (e.g. 'myproj/')")
     b.add_argument("--root", default=".", help="repo root for reading source files")
@@ -317,6 +423,30 @@ def main(argv: list[str] | None = None) -> None:
     m.add_argument("--ontology", default="graphify-out/ontology.json")
     m.set_defaults(fn=lambda a: __import__("lensme.mcp", fromlist=["serve"]).serve(a.ontology))
 
+    rp = sub.add_parser("report", help="generate ARCHITECTURE.md from the ontology")
+    rp.add_argument("--ontology", default="graphify-out/ontology.json")
+    rp.add_argument("-o", "--output", default="ARCHITECTURE.md", help="'-' for stdout")
+    rp.set_defaults(fn=cmd_report)
+
+    pa = sub.add_parser("path", help="shortest relationship path between two nodes")
+    pa.add_argument("src", help="component/file name or path")
+    pa.add_argument("dst", help="component/file name or path")
+    pa.add_argument("--ontology", default="graphify-out/ontology.json")
+    pa.set_defaults(fn=cmd_path)
+
+    ex = sub.add_parser("explain", help="everything known about one node")
+    ex.add_argument("name", help="component/file name or path")
+    ex.add_argument("--ontology", default="graphify-out/ontology.json")
+    ex.set_defaults(fn=cmd_explain)
+
+    mg = sub.add_parser("merge", help="merge per-repo ontologies into a System-level view")
+    mg.add_argument("ontologies", nargs="+", help="ontology.json files to merge")
+    mg.add_argument("--name", default="system", help="system name")
+    mg.add_argument("--description", default="")
+    mg.add_argument("-o", "--output", default="system-ontology.json")
+    mg.add_argument("--tree", action="store_true", help="print the merged tree")
+    mg.set_defaults(fn=cmd_merge)
+
     ic = sub.add_parser("impact-check",
                         help="blast radius of staged files (pre-commit, informational)")
     ic.add_argument("--ontology", default="graphify-out/ontology.json")
@@ -345,7 +475,10 @@ def main(argv: list[str] | None = None) -> None:
     df.set_defaults(fn=cmd_diff)
 
     args = ap.parse_args(argv)
-    args.fn(args)
+    try:
+        args.fn(args)
+    except BrokenPipeError:  # e.g. `lensme tree ... | head`
+        sys.stderr.close()
 
 
 if __name__ == "__main__":
