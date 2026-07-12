@@ -8,3 +8,5 @@ dist/
 
 .DS_Store
 *.log
+lensme/ui_dist/
+build/

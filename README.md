@@ -2,6 +2,14 @@
 
 C4-style ontology layer on top of [graphify](https://github.com/Graphify-Labs/graphify)'s `graph.json`.
 
+![FastAPI mapped by lensme](docs/assets/map-fastapi.png)
+
+*[FastAPI](https://github.com/fastapi/fastapi) (2,718 files) mapped with zero
+config: source features first, docs/examples/tests sidelined into supporting
+bands, real externals (starlette, pydantic) from `pyproject.toml`.
+[Demo GIF](docs/assets/demo-fastapi.gif) shows the detail panel and
+change-impact analysis.*
+
 Turns a raw code knowledge graph (thousands of AST nodes) into a navigable,
 always-fresh map a human can actually read:
 
