@@ -1,0 +1,128 @@
+{
+  "_meta": {
+    "method": "host-agent LLM classification (Claude) from `ontomap symbols` digest",
+    "target_prefix": "graphify/graphify/",
+    "confidence": "INFERRED-llm"
+  },
+  "components": {
+    "corpus_ingestion": {
+      "name": "Corpus Ingestion & Detection",
+      "rationale": "Finds, classifies, converts and slices input files before extraction",
+      "description": "Discovers input files, classifies their type, converts Office/PDF/Google Workspace documents, transcribes media, and slices oversized files into extractable units.",
+      "responsibilities": [
+        "Detect and classify corpus files",
+        "Skip sensitive files (secrets)",
+        "Convert non-text documents to markdown",
+        "Transcribe audio/video via Whisper",
+        "Slice oversized files"
+      ],
+      "feature": "extraction_pipeline",
+      "files": ["detect.py", "ingest.py", "google_workspace.py", "transcribe.py", "file_slice.py"]
+    },
+    "ast_extraction": {
+      "name": "AST Extraction Engine",
+      "rationale": "tree-sitter structural extraction and cross-file symbol resolution",
+      "description": "Parses source files with tree-sitter across 30+ languages, emitting nodes/edges for classes, functions, imports and calls, then resolves cross-file symbol references.",
+      "responsibilities": [
+        "Parse source into AST nodes/edges",
+        "Generate deterministic node IDs",
+        "Resolve cross-file symbol references",
+        "Run per-language resolvers"
+      ],
+      "feature": "extraction_pipeline",
+      "files": ["extract.py", "symbol_resolution.py", "resolver_registry.py", "ruby_resolution.py", "ids.py"]
+    },
+    "external_ingestors": {
+      "name": "External Format Ingestors",
+      "rationale": "Non-source inputs: SCIP index, MCP configs, package manifests, DB introspection",
+      "description": "Ingests non-source structural inputs: SCIP code indexes, MCP server configs, package manifests, and live PostgreSQL/Cargo introspection.",
+      "responsibilities": [
+        "Ingest SCIP JSON indexes",
+        "Extract MCP server configurations",
+        "Parse package manifests",
+        "Introspect Postgres and Cargo workspaces"
+      ],
+      "feature": "extraction_pipeline",
+      "files": ["scip_ingest.py", "mcp_ingest.py", "manifest_ingest.py", "cargo_introspect.py", "pg_introspect.py"]
+    },
+    "semantic_llm": {
+      "name": "LLM Semantic Layer",
+      "rationale": "LLM backends, semantic fragment validation, entity dedup (MinHash/LSH)",
+      "description": "Multi-provider LLM calling for semantic extraction, validation/sanitization of LLM-produced graph fragments, and near-duplicate entity resolution via MinHash/LSH.",
+      "responsibilities": [
+        "Call LLM backends (Claude/Gemini/Bedrock/...)",
+        "Chunk corpora within token budgets",
+        "Validate semantic fragments",
+        "Deduplicate near-identical entities"
+      ],
+      "feature": "extraction_pipeline",
+      "files": ["llm.py", "semantic_cleanup.py", "dedup.py", "_minhash.py"]
+    },
+    "graph_build": {
+      "name": "Graph Build & Persistence",
+      "rationale": "NetworkX graph assembly, merge, validation, caching, multi-repo global graph",
+      "description": "Assembles extraction JSON into a NetworkX graph, merges incremental re-extractions, validates schema, caches results, and maintains the cross-repo global graph.",
+      "responsibilities": [
+        "Build/merge the NetworkX graph",
+        "Deduplicate nodes and edges",
+        "Validate extraction schema",
+        "Cache extraction results",
+        "Maintain the multi-repo global graph"
+      ],
+      "feature": "graph_core",
+      "files": ["build.py", "validate.py", "multigraph_compat.py", "global_graph.py", "cache.py"]
+    },
+    "analysis": {
+      "name": "Analysis & Clustering",
+      "rationale": "Leiden communities, god nodes, surprises, diagnostics, impact/PR analysis",
+      "description": "Community detection, god-node and surprising-connection discovery, graph health diagnostics, and change-impact analysis for PRs.",
+      "responsibilities": [
+        "Cluster the graph into communities",
+        "Find god nodes and surprises",
+        "Diagnose graph integrity",
+        "Compute change impact for PRs"
+      ],
+      "feature": "graph_core",
+      "files": ["cluster.py", "analyze.py", "diagnostics.py", "affected.py", "prs.py"]
+    },
+    "query_serve": {
+      "name": "Query & Serving",
+      "rationale": "BFS/DFS traversal server, query logging, reflection memory, token benchmark",
+      "description": "Answers questions over the graph via BFS/DFS traversal (CLI and MCP server), logs queries, maintains reflection-based work memory, and benchmarks token savings.",
+      "responsibilities": [
+        "Traverse the graph for queries",
+        "Serve MCP/HTTP endpoints",
+        "Log queries and reflect lessons",
+        "Benchmark token reduction"
+      ],
+      "feature": "interfaces",
+      "files": ["serve.py", "querylog.py", "reflect.py", "benchmark.py"]
+    },
+    "export_report": {
+      "name": "Export & Reporting",
+      "rationale": "graph.json/HTML/wiki/Cypher exporters and the audit report generator",
+      "description": "Exports the graph to JSON/HTML/SVG/GraphML/Cypher/wiki formats and generates the human-readable audit report.",
+      "responsibilities": [
+        "Export graph.json and HTML visualization",
+        "Generate GRAPH_REPORT.md",
+        "Emit Neo4j/FalkorDB Cypher",
+        "Build the wiki and callflow views"
+      ],
+      "feature": "interfaces",
+      "files": ["export.py", "report.py", "wiki.py", "tree_html.py", "callflow_html.py"]
+    },
+    "cli_integration": {
+      "name": "CLI & Host Integration",
+      "rationale": "Entry point, host installs, commit hooks, folder watch, path/security utilities",
+      "description": "The graphify CLI entry point, per-host skill installers (Claude/Copilot/Codex/...), git hooks, folder watching, and path/security utilities.",
+      "responsibilities": [
+        "Dispatch CLI subcommands",
+        "Install/uninstall host integrations",
+        "Manage commit hooks and folder watch",
+        "Enforce path and fetch security"
+      ],
+      "feature": "interfaces",
+      "files": ["__main__.py", "__init__.py", "hooks.py", "watch.py", "paths.py", "security.py", "manifest.py"]
+    }
+  }
+}

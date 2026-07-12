@@ -1,0 +1,63 @@
+# PR architecture report: comment `ontomap diff` output on every pull request.
+#
+# Copy to .github/workflows/ontomap-pr-report.yml in your repo.
+# Requires graphify + ontomap installable in CI. The deterministic skeleton
+# needs NO API key; enrichment (if you use it) is applied from the committed
+# enrichment JSON, not recomputed.
+#
+# ponytail: minimal single-job version - build both branches sequentially.
+# Cache graphify-out/ per ref if graph extraction gets slow on your repo.
+
+name: ontomap PR report
+on:
+  pull_request:
+
+permissions:
+  pull-requests: write   # to post the comment
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+
+      - name: Install graphify + ontomap
+        run: |
+          pip install graphify-cli  # adjust to your graphify install method
+          pip install ontomap       # adjust once published; or pip install git+...
+
+      - name: Build ontology for base branch
+        run: |
+          git checkout ${{ github.event.pull_request.base.sha }}
+          graphify . --no-llm
+          ontomap build --name "${{ github.event.repository.name }}" \
+            -o /tmp/ontology-base.json
+
+      - name: Build ontology for PR head
+        run: |
+          git checkout ${{ github.event.pull_request.head.sha }}
+          graphify . --no-llm
+          ontomap build --name "${{ github.event.repository.name }}" \
+            -o /tmp/ontology-head.json
+
+      - name: Diff
+        id: diff
+        run: |
+          {
+            echo 'report<<EOF'
+            echo '## 🗺 ontomap architecture report'
+            echo '```'
+            ontomap diff /tmp/ontology-base.json /tmp/ontology-head.json
+            echo '```'
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Comment on PR
+        uses: marocchino/sticky-pull-request-comment@v2   # updates one comment in place
+        with:
+          header: ontomap-report
+          message: ${{ steps.diff.outputs.report }}
