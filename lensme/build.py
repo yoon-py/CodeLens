@@ -29,6 +29,13 @@ GENERIC_WORDS = {
     "data", "views", "view", "components", "component", "styles", "style",
     "utils", "util", "lib", "libs", "i18n", "env", "d", "nodes", "node",
     "shared", "core", "common", "helpers", "helper",
+    "docs", "doc", "examples", "example",  # reserved by kind_of() buckets
+}
+SUPPORT_KINDS = {  # conventional top-level dirs that are not product source
+    "tests": "tests", "test": "tests", "__tests__": "tests", "spec": "tests", "specs": "tests",
+    "docs": "docs", "doc": "docs", "documentation": "docs", "website": "docs",
+    "docs_src": "examples", "examples": "examples", "example": "examples",
+    "samples": "examples", "demo": "examples", "demos": "examples",
 }
 DEP_RELATIONS = {"imports", "imports_from", "calls", "references", "implements"}
 RELATION_MAP = {
@@ -65,11 +72,47 @@ def module_of(rel_path: str) -> str | None:
     return "/".join(sub) if sub else None
 
 
+def kind_of(rel_path: str) -> str:
+    """source | tests | docs | examples - by top-level directory convention.
+
+    Repos like FastAPI are >70% docs/translations; without this split the
+    supporting dirs drown the product source in every downstream view."""
+    return SUPPORT_KINDS.get(rel_path.split("/", 1)[0].lower(), "source")
+
+
 def _read_text(path: Path) -> str:
     try:
         return path.read_text(encoding="utf-8", errors="ignore")
     except OSError:
         return ""
+
+
+_DEP_SPEC_SPLIT = re.compile(r"[\s\[<>=~!;@,]")  # "pydantic>=1.7,!=1.8" -> "pydantic"
+
+
+def _python_manifest_deps(path: Path) -> list[str]:
+    """Package names from pyproject.toml [project.dependencies] or requirements.txt.
+
+    Python manifests are not AST-parsed into the graph (unlike package.json),
+    so externals for Python repos must come straight from disk."""
+    text = _read_text(path)
+    if not text:
+        return []
+    if path.name == "requirements.txt":
+        specs = [
+            l.strip() for l in text.splitlines()
+            if l.strip() and not l.strip().startswith(("#", "-"))
+        ]
+    else:
+        try:
+            import tomllib
+            specs = tomllib.loads(text).get("project", {}).get("dependencies", [])
+        except ModuleNotFoundError:  # 3.10: no tomllib - line-scan the array
+            m = re.search(r"^dependencies\s*=\s*\[(.*?)\]", text, re.S | re.M)
+            specs = re.findall(r"['\"]([^'\"]+)['\"]", m.group(1)) if m else []
+        except ValueError:  # malformed TOML - skip, never crash the build
+            return []
+    return [n for n in (_DEP_SPEC_SPLIT.split(s.strip(), 1)[0] for s in specs) if n]
 
 
 def discover_domain_words(rel_paths: list[str], topdirs: list[str], top_n: int = 6) -> list[str]:
@@ -251,6 +294,19 @@ def build_ontology(
                         "kind": n["label"],
                         "confidence": "EXTRACTED",
                     })
+    # --- externals from Python manifests on disk (pyproject.toml, requirements.txt) ---
+    seen_ext = {e["name"] for e in externals}
+    for manifest in (root / prefix / "pyproject.toml", root / prefix / "requirements.txt"):
+        for name in _python_manifest_deps(manifest):
+            if name not in seen_ext:
+                seen_ext.add(name)
+                externals.append({
+                    "id": f"external_{re.sub(r'[^a-z0-9_]', '_', name.lower())}",
+                    "type": "External",
+                    "name": name,
+                    "kind": "dependencies",
+                    "confidence": "EXTRACTED",
+                })
     external_names = [e["name"] for e in externals]
 
     # symbols contained in each file node: name + line (v2 deep-dive payload)
@@ -275,6 +331,7 @@ def build_ontology(
             "name": rel.rsplit("/", 1)[-1],
             "topdir": topdir_of(rel),
             "module": module_of(rel),
+            "kind": kind_of(rel),
             "loc": text.count("\n") + (1 if text and not text.endswith("\n") else 0),
             "functions": len(symbols),
             "symbols": symbols,
@@ -293,10 +350,13 @@ def build_ontology(
                 f["domain"] = enrichment["components"][comp_key]["feature"]
                 f["enriched"] = True
 
-    # --- domain (feature) discovery over the non-enriched remainder only ---
+    # --- domain (feature) discovery over the non-enriched remainder only;
+    # tests/docs/examples are excluded so filename tokens from translations
+    # and test suites can't mint fake product features ---
     plain = [f for f in files if not f["enriched"]]
+    source_plain = [f for f in plain if f["kind"] == "source"]
     domain_words = discover_domain_words(
-        [f["rel_path"] for f in plain], [f["topdir"] for f in plain]
+        [f["rel_path"] for f in source_plain], [f["topdir"] for f in source_plain]
     )
 
     def domain_of(rel_path: str) -> str:
@@ -307,7 +367,14 @@ def build_ontology(
         return "shared"
 
     for f in plain:
-        f["domain"] = domain_of(f["rel_path"])
+        f["domain"] = domain_of(f["rel_path"]) if f["kind"] == "source" else f["kind"]
+
+    # Flat source tree (single topdir, no cross-dir domain tokens) means the
+    # heuristic has nothing to work with - flag it instead of guessing.
+    source_topdirs = {f["topdir"] for f in source_plain}
+    enrichment_recommended = not enrichment and (
+        not domain_words or len(source_topdirs) <= 1
+    )
 
     # --- cross-file dependency pairs, later rolled up to component level ---
     node_file_of = {nid: n["source_file"] for nid, n in sub_nodes.items()}
@@ -340,7 +407,11 @@ def build_ontology(
     comp_stats: dict[str, dict] = {}
     comp_external_imports: dict[str, Counter] = defaultdict(Counter)
 
-    for domain, flist in sorted(by_feature.items()):
+    support_features = set(SUPPORT_KINDS.values())
+    # source features first, supporting bands (tests/docs/examples) last
+    for domain, flist in sorted(
+        by_feature.items(), key=lambda kv: (kv[0] in support_features, kv[0])
+    ):
         by_topdir: dict[str, list[dict]] = defaultdict(list)
         for f in flist:
             by_topdir[f["topdir"]].append(f)
@@ -414,9 +485,12 @@ def build_ontology(
         features.append({
             "id": f"feature_{domain}", "type": "Feature",
             "name": domain.replace("_", " ").title(),
+            "kind": "support" if domain in support_features else "source",
             "confidence": "INFERRED-heuristic",
             "rationale": (
-                f"Files whose path contains the auto-discovered domain token '{domain}'"
+                f"Conventional supporting directory ({domain}) - kept out of the product map"
+                if domain in support_features
+                else f"Files whose path contains the auto-discovered domain token '{domain}'"
                 if domain not in ("shared", "core")
                 else "Files with no cross-cutting domain token match"
             ),
@@ -501,6 +575,7 @@ def build_ontology(
                 "communities": len(communities),
             },
             "level_counts": level_counts,
+            "enrichment_recommended": enrichment_recommended,
         },
         "id": f"product_{re.sub(r'[^a-z0-9_]', '_', product_name.lower())}",
         "type": "Product",

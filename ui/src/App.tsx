@@ -141,7 +141,7 @@ function CanvasOrGraph() {
   const view = useOnto((s) => s.view)
   const graphFocus = useOnto((s) => s.graphFocus)
   if (view === 'graph') {
-    // graphify's self-contained interactive graph, served by `codelens serve`;
+    // graphify's self-contained interactive graph, served by `lensme serve`;
     // ?q= is handled by a loader the server injects (focuses the matching node)
     const src = '/graph.html' + (graphFocus ? `?q=${encodeURIComponent(graphFocus)}` : '')
     return <iframe className="graph-frame" src={src} title="Code Graph" />
@@ -176,7 +176,7 @@ export default function App() {
       } catch { /* hotspots are optional */ }
     }
     fetchOnto()
-    const t = setInterval(fetchOnto, 5000) // freshness: pick up `codelens sync --watch` rebuilds
+    const t = setInterval(fetchOnto, 5000) // freshness: pick up `lensme sync --watch` rebuilds
     return () => { stop = true; clearInterval(t) }
   }, [load, setHotspots])
   void built

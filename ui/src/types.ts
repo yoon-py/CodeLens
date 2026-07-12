@@ -72,7 +72,7 @@ export interface Ontology extends OntoNode {
   impact: Record<string, Impact>
 }
 
-/** Output of `codelens hotspots`: git churn + co-change joined onto the ontology. */
+/** Output of `lensme hotspots`: git churn + co-change joined onto the ontology. */
 export interface Hotspots {
   generated_at: string
   since: string

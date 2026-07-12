@@ -1,4 +1,4 @@
-# codelens
+# lensme
 
 C4-style ontology layer on top of [graphify](https://github.com/Graphify-Labs/graphify)'s `graph.json`.
 
@@ -16,20 +16,20 @@ relationship edges, detail panel with metrics and change-impact analysis.
 
 ```bash
 # 0. once: install (from this repo)
-uv tool install --editable ./codelens
-(cd codelens/ui && npm install && npm run build)
+uv tool install --editable ./lensme
+(cd lensme/ui && npm install && npm run build)
 
 # 1. build the code graph with graphify (writes graphify-out/graph.json)
 graphify .
 
 # 2. build the ontology
-codelens build --prefix myproject/ --name myproject
+lensme build --prefix myproject/ --name myproject
 
 # 3. open the map
-codelens serve
+lensme serve
 ```
 
-`codelens serve --watch` keeps the map fresh: when graphify rewrites
+`lensme serve --watch` keeps the map fresh: when graphify rewrites
 `graph.json` (its `--watch` mode or commit hook), the ontology is rebuilt
 automatically and the browser picks it up within seconds.
 
@@ -37,28 +37,28 @@ automatically and the browser picks it up within seconds.
 
 | command | what it does |
 |---|---|
-| `codelens build --prefix p/ --name x [--enrichment e.json] [--tree]` | graph.json → ontology.json; saves config for `sync` |
-| `codelens sync` | rebuild using the saved config |
-| `codelens sync --watch` | poll graph.json, rebuild ontology on change |
-| `codelens serve [--watch] [--port N]` | serve UI + ontology.json (+ graph.html, hotspots.json), open browser |
-| `codelens symbols --prefix p/ [--changed]` | per-file symbol digest for agent enrichment (hash-cached) |
-| `codelens tree ontology.json` | pretty-print an ontology |
-| `codelens mcp [--ontology o.json]` | MCP server (stdio, zero-dep): `overview` / `search` / `component` / `impact` tools for agents |
-| `codelens impact-check [--repo r] [--files ...]` | blast radius of staged files - informational, never blocks; `--install-hook` writes a pre-commit hook |
-| `codelens hotspots [--repo r] [--since "6 months ago"]` | git churn + co-change joined onto the ontology; flags co-changed pairs with **no** structural edge (hidden coupling); feeds the UI heatmap |
-| `codelens diff old.json new.json [--json]` | structural diff: components/files added/removed, relationship count deltas, blast-radius changes - the engine for PR architecture reports |
+| `lensme build --prefix p/ --name x [--enrichment e.json] [--tree]` | graph.json → ontology.json; saves config for `sync` |
+| `lensme sync` | rebuild using the saved config |
+| `lensme sync --watch` | poll graph.json, rebuild ontology on change |
+| `lensme serve [--watch] [--port N]` | serve UI + ontology.json (+ graph.html, hotspots.json), open browser |
+| `lensme symbols --prefix p/ [--changed]` | per-file symbol digest for agent enrichment (hash-cached) |
+| `lensme tree ontology.json` | pretty-print an ontology |
+| `lensme mcp [--ontology o.json]` | MCP server (stdio, zero-dep): `overview` / `search` / `component` / `impact` tools for agents |
+| `lensme impact-check [--repo r] [--files ...]` | blast radius of staged files - informational, never blocks; `--install-hook` writes a pre-commit hook |
+| `lensme hotspots [--repo r] [--since "6 months ago"]` | git churn + co-change joined onto the ontology; flags co-changed pairs with **no** structural edge (hidden coupling); feeds the UI heatmap |
+| `lensme diff old.json new.json [--json]` | structural diff: components/files added/removed, relationship count deltas, blast-radius changes - the engine for PR architecture reports |
 
 ## Git integration
 
 ```bash
 # pre-commit: see the blast radius before you commit (never blocks)
-codelens impact-check --install-hook --repo . --ontology graphify-out/ontology.json
+lensme impact-check --install-hook --repo . --ontology graphify-out/ontology.json
 
 # architecture time machine: churn heatmap + hidden coupling
-codelens hotspots --repo . && codelens serve   # then toggle "Show Hotspots"
+lensme hotspots --repo . && lensme serve   # then toggle "Show Hotspots"
 
 # PR report core: diff two builds
-codelens diff main-ontology.json feature-ontology.json
+lensme diff main-ontology.json feature-ontology.json
 ```
 
 ## Design
@@ -99,6 +99,24 @@ Properties tab:
   "impact": { "<component_id>": { "direct": [...], "indirect": [...], "total_files": N } }
 }
 ```
+
+## Validated against external repos
+
+Run on [FastAPI](https://github.com/fastapi/fastapi) (2,718 files, ~74% of
+which are docs/translations - a worst case for path heuristics):
+
+- `tests/`, `docs/`, `docs_src/` are classified as supporting bands and sorted
+  after the product source instead of drowning it (before this, "Docs" was the
+  top feature with 2,016 files).
+- Externals are read from `pyproject.toml` / `requirements.txt`, not just
+  `package.json`: starlette, pydantic, typing-extensions detected with
+  `integrates_with` edge counts per component.
+- Flat packages (no directory signal) set `meta.enrichment_recommended` and the
+  CLI prints a hint, instead of inventing features from filename tokens.
+
+The FastAPI failure modes are pinned as regression tests in
+`tests/test_build.py` (`test_support_kinds_sidelined`,
+`test_python_manifest_externals`, `test_flat_package_flag`).
 
 ## Development
 

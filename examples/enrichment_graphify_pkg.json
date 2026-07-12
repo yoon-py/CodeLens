@@ -1,6 +1,6 @@
 {
   "_meta": {
-    "method": "host-agent LLM classification (Claude) from `codelens symbols` digest",
+    "method": "host-agent LLM classification (Claude) from `lensme symbols` digest",
     "target_prefix": "graphify/graphify/",
     "confidence": "INFERRED-llm"
   },

@@ -1,4 +1,4 @@
-"""Self-check for codelens.build - runnable directly: python tests/test_build.py"""
+"""Self-check for lensme.build - runnable directly: python tests/test_build.py"""
 import json
 import sys
 import tempfile
@@ -6,7 +6,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from codelens.build import (
+from lensme.build import (
     build_ontology, discover_domain_words, symbol_digest, _external_imports,
     _compute_impact,
 )
@@ -205,6 +205,54 @@ def test_no_origin_graph_fallback():
         n.pop("_origin", None)
     onto = build_ontology(g, prefix="proj/", product_name="legacy")
     assert onto["stats"]["files"] > 0, "no-_origin graph must still find file nodes"
+
+
+def test_support_kinds_sidelined():
+    # FastAPI regression: tests/docs/docs_src must not drown the product map
+    g = _graph()
+    g["nodes"] += [
+        _node("f_test_b", "test_billing.py", "proj/tests/test_billing.py"),
+        _node("f_doc_idx", "index.md", "proj/docs/index.md"),
+        _node("f_ex_tut", "tutorial_billing.py", "proj/docs_src/tutorial_billing.py"),
+    ]
+    onto = build_ontology(g, prefix="proj/", product_name="proj")
+    feats = {f["name"]: f for f in onto["children"]}
+    assert {"Tests", "Docs", "Examples"} <= set(feats), feats.keys()
+    assert feats["Docs"]["kind"] == "support" and feats["Billing"]["kind"] == "source"
+    kinds = [f["kind"] for f in onto["children"]]
+    assert kinds == sorted(kinds), kinds  # "source" features sort before "support"
+    assert "tutorial" not in onto["discovered_domain_words"]
+
+
+def test_python_manifest_externals():
+    # FastAPI regression: pyproject/requirements deps were invisible (external: [])
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        _write_sources(root)
+        (root / "proj/pyproject.toml").write_text(
+            '[project]\nname = "x"\ndependencies = ["requests>=2.0,!=2.1", "numpy[extra]==1.0"]\n',
+            encoding="utf-8",
+        )
+        (root / "proj/requirements.txt").write_text("# dev\nflask\n-r other.txt\n", encoding="utf-8")
+        (root / "proj/src/store/billingStore.ts").write_text("import requests\n", encoding="utf-8")
+        onto = build_ontology(_graph(), prefix="proj/", root=root, product_name="proj")
+        ext = {e["name"] for e in onto["external"]}
+        assert {"react", "requests", "numpy", "flask"} <= ext, ext
+        ints = [r for r in onto["component_relationships"]
+                if r["relation"] == "integrates_with" and r["target"] == "external_requests"]
+        assert ints, "import requests must create an integrates_with edge"
+
+
+def test_flat_package_flag():
+    # FastAPI regression: a flat package must ask for enrichment, not invent features
+    nodes = [
+        _node("f_a", "a.py", "pkg/lensme/a.py"),
+        _node("f_b", "b.py", "pkg/lensme/b.py"),
+    ]
+    onto = build_ontology({"nodes": nodes, "links": []}, prefix="pkg/", product_name="flat")
+    assert onto["meta"]["enrichment_recommended"] is True
+    onto2 = build_ontology(_graph(), prefix="proj/", product_name="proj")
+    assert onto2["meta"]["enrichment_recommended"] is False
 
 
 if __name__ == "__main__":

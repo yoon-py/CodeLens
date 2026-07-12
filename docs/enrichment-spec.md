@@ -1,23 +1,23 @@
-# codelens enrichment spec (for host agents)
+# lensme enrichment spec (for host agents)
 
-When a codebase is a flat package (many files in one directory), codelens's
+When a codebase is a flat package (many files in one directory), lensme's
 path-based heuristics cannot infer Components. A host agent (Claude, Copilot,
-any LLM agent running codelens) fills the gap by classifying files into
+any LLM agent running lensme) fills the gap by classifying files into
 components from their **symbol digests** - never from full file contents.
 
 ## Workflow
 
 ```bash
 # 1. emit the per-file symbol digest (rel_path -> symbol labels)
-codelens symbols --graph graphify-out/graph.json --prefix mypkg/ > symbols.json
+lensme symbols --graph graphify-out/graph.json --prefix mypkg/ > symbols.json
 
 # incremental: only files whose symbols changed since the last run
-codelens symbols --graph graphify-out/graph.json --prefix mypkg/ --changed
+lensme symbols --graph graphify-out/graph.json --prefix mypkg/ --changed
 
 # 2. the agent reads symbols.json and writes enrichment.json (schema below)
 
 # 3. build with the enrichment
-codelens build --graph graphify-out/graph.json --prefix mypkg/ \
+lensme build --graph graphify-out/graph.json --prefix mypkg/ \
   --name mypkg --enrichment enrichment.json --tree
 ```
 
