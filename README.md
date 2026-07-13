@@ -1,9 +1,17 @@
 # lensme
 
-**Cut agent token costs on both axes: read less, write less.**
-A C4-style ontology layer over your code graph — humans get an always-fresh
-architecture map, agents get task-scoped context instead of raw source, and
-commodity code gets assembled from verified components instead of regenerated.
+### Keep humans in control of AI-written code.
+
+AI agents now write code faster than any team can read it. The bottleneck has
+moved: it's no longer *generating* code, it's **understanding, trusting, and
+governing** the code an agent produces. lensme is the layer that keeps a human
+in command — it turns any codebase into a navigable architecture map, gives
+agents a disciplined way to read it, and lets them assemble verified
+components instead of regenerating them from scratch.
+
+One artifact underneath all of it: a C4-style **ontology**
+(`Product > Feature > Component > File`) built from your code graph. Everything
+below is a view onto that same ontology.
 
 ![FastAPI mapped by lensme](docs/assets/map-fastapi.png)
 
@@ -13,39 +21,48 @@ bands, real externals (starlette, pydantic) from `pyproject.toml`.
 [Demo GIF](docs/assets/demo-fastapi.gif) shows the detail panel and
 change-impact analysis.*
 
-## The thesis: token cost has two axes, and they're symmetric
+## Three axes: UNDERSTAND · READ · WRITE
 
-Every AI coding session pays twice. It pays **input tokens** to understand the
-codebase (exploration: `ls`, `grep`, reading files that turn out to be wrong),
-and it pays **output tokens** to produce code (regenerating the same auth /
-CRUD / upload / TTS commodity logic the world has written a thousand times).
-lensme attacks both with the same artifact — the ontology:
+Governing AI development means controlling three things — what the *human*
+sees, what the *agent reads* before it acts, and what the *agent writes*.
+lensme addresses each from the same ontology.
 
-### 🛡️ READ — input token savings (ontology + `get_context`)
+### 🗺️ UNDERSTAND — the human stays in command
+
+The person, not just the model, needs to see the system. The ontology renders
+as an interactive banded map (Product → Feature → Component), a living
+`ARCHITECTURE.md` you can commit and regenerate, change-impact ("what breaks
+if I touch this?"), and git hotspots that surface hidden coupling. Every node
+carries an honest confidence tag — `EXTRACTED` (structural fact) vs
+`INFERRED` (a guess, labelled as one) — so you always know what's real.
+
+> This is the point of the whole thing: as agents write more, the human's
+> ability to comprehend and review has to keep up. The map is that leverage.
+
+### 🛡️ READ — the agent reads the map, not the repo
 
 Instead of feeding an agent tens of thousands of lines to orient itself, one
-MCP call returns a task-scoped bundle: the owning component, files ranked by
-relevance with symbols, read-first suggestions, dependencies, and blast
-radius — trimmed to a token budget. The agent reads the *map*, then reads
-exactly one file.
+MCP call (`get_context`) returns a task-scoped bundle: the owning component,
+files ranked by relevance with symbols, read-first suggestions, dependencies,
+and blast radius — trimmed to a token budget. The agent reads the *map*, then
+reads exactly one file.
 
 > Measured on FastAPI: exploration tokens **29–99% lower** than an
-> ls + grep + read-candidates walk, task-dependent ([details below](#benchmarks-honestly)).
+> ls + grep + read-candidates walk, task-dependent
+> ([benchmarks below](#benchmarks-honestly)).
 
-### ⚔️ WRITE — output token savings (component assembly)
+### ⚔️ WRITE — assemble verified components, don't regenerate
 
+Most projects are combinations of commodity parts (auth, CRUD, upload, TTS).
 Instead of typing a battle-tested module back into existence, the agent
-searches a local registry of components extracted from repos you own, vendors
+searches a registry of components you extracted from repos you own, vendors
 the source shadcn-style (copy it, own it — no package dependency), and writes
 only the glue. The implementation never enters the context window; the agent
-reads a `manifest.json` and a computed wiring plan.
+reads a `manifest.json` and a **computed wiring plan**.
 
-> Measured on 3 real production components: **91% fewer tokens** than
-> regenerating them (9,789 → 915, and the regeneration side is a lower
-> bound — [details below](#component-assembly-in-practice)).
-
-The symmetry is the product: one ontology drives the human map, the agent's
-reading, and the agent's writing.
+> Measured on 3 real production components: **91% fewer output tokens** than
+> regenerating them (9,789 → 915, regeneration side a lower bound —
+> [details below](#write-in-practice-component-assembly)).
 
 ## How it flows
 
@@ -54,12 +71,16 @@ flowchart LR
     R["your repo"] -->|"graphify (today)<br/>codebase-memory-mcp (planned)"| G["graph.json"]
     G -->|"lensme build"| O["ontology.json<br/>Product > Feature > Component"]
 
-    subgraph READ["🛡️ READ — input tokens"]
-        O --> UI["interactive map<br/>+ ARCHITECTURE.md"]
+    subgraph U["🗺️ UNDERSTAND — human"]
+        O --> UI["interactive map"]
+        O --> DOC["ARCHITECTURE.md<br/>+ hotspots + impact"]
+    end
+
+    subgraph READ["🛡️ READ — agent input"]
         O --> GC["MCP get_context<br/>task-scoped bundle"]
     end
 
-    subgraph WRITE["⚔️ WRITE — output tokens"]
+    subgraph WRITE["⚔️ WRITE — agent output"]
         O -->|"lensme extract"| REG[("~/.lensme/registry<br/>manifest + source snapshot")]
         REG -->|"lensme install"| T["target project<br/>vendored source + WIRING.md"]
         TO["target's own<br/>ontology.json"] -->|"graph matching"| T
@@ -69,6 +90,10 @@ flowchart LR
 Both ends of the WRITE axis are ontologies — the component knows what shape of
 dependency it expects (recorded at extract time), and the target project's
 ontology says what's available. Wiring is graph matching, not guesswork.
+
+Token savings are the measurable evidence, not the mission. The mission is
+that a human stays able to understand and govern a codebase an agent is
+changing faster than anyone can read.
 
 ## Quick start
 
@@ -88,7 +113,7 @@ Or step by step: `graphify .` then `lensme build --name myproject` then
 `graph.json` (its `--watch` mode or commit hook), the ontology is rebuilt
 automatically and the browser picks it up within seconds.
 
-## Component assembly in practice
+## WRITE in practice: component assembly
 
 The walkthrough below is the real flow we validated, extracting production
 assets from a shorts-generation backend (multi-provider TTS, image
@@ -202,7 +227,10 @@ and description are what make it findable.
 | `lensme hotspots [--repo r] [--since "6 months ago"]` | git churn + co-change joined onto the ontology; flags co-changed pairs with **no** structural edge (hidden coupling) |
 | `lensme diff old.json new.json [--json]` | structural diff: the engine for PR architecture reports |
 
-## Git integration
+## UNDERSTAND in practice: git integration
+
+Keeping the human in command means the map moves with the code and surfaces
+risk before it lands:
 
 ```bash
 # pre-commit: see the blast radius before you commit (never blocks)
@@ -324,8 +352,8 @@ is worth reading for how a rigorous version of this benchmark looks.
 
 ### WRITE axis: assembly vs regeneration
 
-See [Component assembly in practice](#component-assembly-in-practice) — 91%
-total across three real components, with the lower-bound caveat stated.
+See [WRITE in practice](#write-in-practice-component-assembly) — 91% total
+across three real components, with the lower-bound caveat stated.
 
 ## Validated against external repos
 
@@ -345,6 +373,26 @@ The FastAPI failure modes are pinned as regression tests in
 `tests/test_build.py` (`test_support_kinds_sidelined`,
 `test_python_manifest_externals`, `test_flat_package_flag`,
 `test_scripts_dir_is_tooling_not_source`).
+
+## Where this is going
+
+Everything above works today, locally, with no account and no cloud. That's
+deliberate — the value has to be real on one machine before it's real for a
+team. The direction from here, in order:
+
+- **Now**: local ontology + map, agent READ tools, local component registry
+  (`~/.lensme/registry`).
+- **Next**: team-shared components — commit an extracted component into a repo
+  (manifest + snapshot) so teammates `install` without re-extracting; the
+  data model already supports this.
+- **Then**: a `codebase-memory-mcp` backend adapter (LSP-refined call edges,
+  cross-service links) alongside graphify; the schema is already validated
+  against the lensme contract.
+- **Later**: a System-level (C4 L1) view across repos — `lensme merge` is the
+  data-model seed for it today.
+
+Not on the roadmap: a hosted marketplace. Shared reuse starts in your own
+repos and your own team, where "verified" means *you* verified it.
 
 ## Development
 
