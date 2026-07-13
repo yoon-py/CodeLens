@@ -22,7 +22,23 @@ import re
 import sys
 from pathlib import Path
 
+from .build import tokenize
+
 PROTOCOL_VERSION = "2024-11-05"
+
+# Generic commit-message vocabulary: carries no repo-specific signal and
+# false-positive matches directory/file tokens in every codebase (e.g. "fix"
+# in a task about a bug fix has nothing to do with a file named fixer.py).
+TASK_STOPWORDS = {
+    "fix", "fixed", "fixes", "fixing", "add", "added", "adding", "adds",
+    "update", "updated", "updating", "updates", "remove", "removed",
+    "removing", "support", "supporting", "allow", "allowing", "avoid",
+    "handle", "handling", "make", "making", "use", "using", "used",
+    "change", "changed", "changes", "changing", "improve", "improved",
+    "refactor", "refactored", "bug", "issue", "error", "errors", "failing",
+    "fail", "test", "tests", "testing", "for", "the", "and", "with", "from",
+    "into", "when", "that", "this", "not", "only", "now", "new", "old",
+}
 
 
 # ---------- ontology access (reload when the file changes: always-fresh maps) ----------
@@ -177,13 +193,19 @@ def _est_tokens(obj) -> int:
 
 
 def _task_words(task: str) -> list[str]:
-    return [w for w in re.findall(r"[a-z0-9_]+", task.lower()) if len(w) > 2]
+    words = [w for w in re.findall(r"[a-z0-9_]+", task.lower()) if len(w) > 2]
+    return [w for w in words if w not in TASK_STOPWORDS] or words  # never empty if task had words
 
 
 def _file_score(f: dict, words: list[str]) -> int:
-    path = (f.get("path") or f["name"]).lower()
-    score = sum(3 for w in words if w in path)
-    score += sum(1 for w in words for s in f.get("symbols", []) if w in s["name"].lower())
+    # exact token match, not substring: "fix" must not hit "fixer.py" or
+    # "test" must not hit "latest.py" - tokenize() is the same path->word
+    # splitter build.py uses for domain discovery, so this stays consistent
+    # with how features/components were named in the first place.
+    path_tokens = set(tokenize(f.get("path") or f["name"]))
+    score = 3 * sum(1 for w in words if w in path_tokens)
+    sym_tokens = {t for s in f.get("symbols", []) for t in tokenize(s["name"])}
+    score += sum(1 for w in words if w in sym_tokens)
     return score
 
 
@@ -212,7 +234,11 @@ def tool_get_context(onto: Onto, args: dict) -> dict:
 
         collect(n)
         head = (n["name"] + " " + n.get("description", "")).lower()
-        score = sum(5 for w in words if w in head) + sum(_file_score(f, words) for f in files)
+        # top-K sum, not sum-over-all-files: a component with hundreds of
+        # files each weakly matching (e.g. a shared "scripts" bucket) must
+        # not outscore a small component with one or two exact hits
+        file_scores = sorted((_file_score(f, words) for f in files), reverse=True)
+        score = sum(5 for w in words if w in head) + sum(file_scores[:5])
         # docs/tests/examples bands answer "where is X documented", never
         # "where is X implemented" - any matching source component wins first
         support = any(a.get("kind") == "support" for a in e["chain"])

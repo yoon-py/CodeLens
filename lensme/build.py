@@ -29,13 +29,19 @@ GENERIC_WORDS = {
     "data", "views", "view", "components", "component", "styles", "style",
     "utils", "util", "lib", "libs", "i18n", "env", "d", "nodes", "node",
     "shared", "core", "common", "helpers", "helper",
-    "docs", "doc", "examples", "example",  # reserved by kind_of() buckets
+    "docs", "doc", "examples", "example", "scripts", "script", "tools", "tool",
+    "tooling",  # reserved by kind_of() buckets
 }
 SUPPORT_KINDS = {  # conventional top-level dirs that are not product source
     "tests": "tests", "test": "tests", "__tests__": "tests", "spec": "tests", "specs": "tests",
     "docs": "docs", "doc": "docs", "documentation": "docs", "website": "docs",
     "docs_src": "examples", "examples": "examples", "example": "examples",
     "samples": "examples", "demo": "examples", "demos": "examples",
+    # dev/build tooling: not product source an agent implementing a feature
+    # needs, and (like docs) prone to drowning small real components in
+    # aggregate file/word counts (see scripts/ in FastAPI: 64 helper files)
+    "scripts": "tooling", "script": "tooling", "tools": "tooling", "tool": "tooling",
+    "bin": "tooling", "build": "tooling", "ci": "tooling",
 }
 DEP_RELATIONS = {"imports", "imports_from", "calls", "references", "implements"}
 RELATION_MAP = {

@@ -141,6 +141,39 @@ baseline walk never computes. Small sample (5 tasks, 1 repo, one author for
 both the tool and the benchmark) - `examples/bench_context.py` is the whole
 methodology, run it on your own repo rather than trusting a single number.
 
+### Answer-quality benchmark: does it point at the right file?
+
+Token savings are cheap to claim and meaningless if `get_context` points at
+the wrong file. `examples/bench_accuracy.py` checks that directly, against
+ground truth mined from git history (not hand-picked): single/double-file
+commits under `fastapi/` become (commit message -> actually-changed file)
+pairs, gitmoji/PR-number stripped, 108 pairs from FastAPI's real history.
+
+| metric | result |
+|---|---|
+| `read_first[0]` is the file the commit changed | 26% (28/108) |
+| changed file is in `read_first` (top 3) | 46% (50/108) |
+| changed file is anywhere in the returned file list | 81% (88/108) |
+
+This benchmark caught two real bugs, both fixed in the current build (not
+adjusted after the fact - see git history): a `"scripts"` directory was
+mis-classified as product source, so its 64 dev-tooling files (translation
+fixers, doc generators) out-voted the 9-50 file components that were the
+actual answer on pure volume; and task-word matching used raw substring
+instead of tokenized comparison, so the word "fix" in a task false-matched
+`fixer.py`. Fixing both moved the "anywhere" hit rate from 30% to 81%.
+
+The remaining misses are a real ceiling of keyword matching, not a further
+bug: tasks like "Add support for PEP695 `TypeAliasType`" name a Python typing
+concept that appears nowhere in the target file's path or symbol names -
+`get_context` can't find what isn't lexically there. This is exactly what
+`meta.enrichment_recommended` and agent enrichment (below) exist for.
+
+**Not comparable to codebase-memory-mcp's reported 83% answer quality** - different
+metric (file localization vs. Q&A correctness), different ground truth
+methodology, one repo vs. their 31. Their [preprint](https://arxiv.org/abs/2603.27277)
+is worth reading for how a rigorous version of this benchmark looks.
+
 ## Validated against external repos
 
 Run on [FastAPI](https://github.com/fastapi/fastapi) (2,718 files, ~74% of

@@ -224,6 +224,20 @@ def test_support_kinds_sidelined():
     assert "tutorial" not in onto["discovered_domain_words"]
 
 
+def test_scripts_dir_is_tooling_not_source():
+    # accuracy regression: a large scripts/ dev-tooling dir was outscoring
+    # small real components in get_context purely on file-count volume
+    g = _graph()
+    g["nodes"] += [
+        _node(f"f_script_{i}", f"helper_{i}.py", f"proj/scripts/helper_{i}.py")
+        for i in range(20)
+    ]
+    onto = build_ontology(g, prefix="proj/", product_name="proj")
+    feats = {f["name"]: f for f in onto["children"]}
+    assert "Tooling" in feats and feats["Tooling"]["kind"] == "support"
+    assert feats["Tooling"]["stats"]["files"] == 20
+
+
 def test_python_manifest_externals():
     # FastAPI regression: pyproject/requirements deps were invisible (external: [])
     with tempfile.TemporaryDirectory() as td:
