@@ -122,9 +122,14 @@ generation, job store).
 **1. Extract** — in the source repo, after `lensme build`:
 
 ```bash
-$ lensme extract "Text-to-Speech"
+$ lensme extract "Text-to-Speech"           # -> ~/.lensme/registry (personal)
+$ lensme extract "Text-to-Speech" --share   # -> <repo>/.lensme/registry (commit for teammates)
 extracted text-to-speech@1.0.0 (3 files, 19 exports, 0 bundled tests)
 ```
+
+With `--share`, commit `.lensme/registry/`; a teammate then runs
+`lensme install text-to-speech` anywhere in the repo and it's found by walking
+up the tree — no re-extraction, no account, just a git pull.
 
 If the source tree is flat and the heuristics can't find components, lensme
 says so (`meta.enrichment_recommended`) and an agent classifies the files
@@ -210,7 +215,7 @@ and description are what make it findable.
 | command | what it does |
 |---|---|
 | `lensme scan [path]` | one command: graphify extract + build + serve |
-| `lensme extract "Component"` | package an ontology component into `~/.lensme/registry` |
+| `lensme extract "Component" [--share]` | package a component into `~/.lensme/registry` (or the repo's `.lensme/registry` with `--share`) |
 | `lensme registry list\|search\|show` | browse/search the local component registry |
 | `lensme install <name> [dest] [--target-ontology o.json]` | vendor a component + computed wiring plan |
 | `lensme report [-o ARCHITECTURE.md]` | living architecture doc: structure, relationships, externals, blast radius, hotspots |
@@ -380,11 +385,11 @@ Everything above works today, locally, with no account and no cloud. That's
 deliberate — the value has to be real on one machine before it's real for a
 team. The direction from here, in order:
 
-- **Now**: local ontology + map, agent READ tools, local component registry
-  (`~/.lensme/registry`).
-- **Next**: team-shared components — commit an extracted component into a repo
-  (manifest + snapshot) so teammates `install` without re-extracting; the
-  data model already supports this.
+- **Now**: local ontology + map, agent READ tools, and a component registry
+  that works two ways — personal (`~/.lensme/registry`) and **team-shared**
+  (`.lensme/registry` committed in the repo). `lensme extract --share` writes
+  a component into the repo; a teammate runs `lensme install <name>` anywhere
+  in the tree and it's found by walking up — no re-extraction, no account.
 - **Then**: a `codebase-memory-mcp` backend adapter (LSP-refined call edges,
   cross-service links) alongside graphify; the schema is already validated
   against the lensme contract.
@@ -392,7 +397,8 @@ team. The direction from here, in order:
   data-model seed for it today.
 
 Not on the roadmap: a hosted marketplace. Shared reuse starts in your own
-repos and your own team, where "verified" means *you* verified it.
+repos and your own team, where "verified" means *you* verified it — a git
+pull, not a download from a stranger.
 
 ## Development
 

@@ -25,7 +25,8 @@ from pathlib import Path
 
 from .build import _python_manifest_deps, _read_text, tokenize
 
-DEFAULT_REGISTRY = Path.home() / ".lensme" / "registry"
+DEFAULT_REGISTRY = Path.home() / ".lensme" / "registry"     # personal, ~/
+PROJECT_REGISTRY_REL = Path(".lensme") / "registry"          # team-shared, committed in-repo
 MANIFEST_SCHEMA_VERSION = 1
 
 _ENV_PATTERNS = (
@@ -112,6 +113,80 @@ def _git_head(repo: Path) -> str:
         ).stdout.strip()
     except (subprocess.CalledProcessError, OSError):
         return ""
+
+
+# ---------- registry resolution: personal (~/) vs team-shared (in-repo) ----------
+
+def _git_root(start: str | Path) -> Path:
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(start), "rev-parse", "--show-toplevel"],
+            capture_output=True, text=True, check=True,
+        ).stdout.strip()
+        return Path(out)
+    except (subprocess.CalledProcessError, OSError):
+        return Path(start).resolve()
+
+
+def project_registry_for(start: str | Path) -> Path:
+    """Where `extract --share` writes: <repo-root>/.lensme/registry, committed so
+    teammates install without re-extracting."""
+    return _git_root(start) / PROJECT_REGISTRY_REL
+
+
+def find_project_registry(start: str | Path) -> Path | None:
+    """Walk up from `start` for a committed .lensme/registry, not escaping the repo."""
+    cur = Path(start).resolve()
+    for d in (cur, *cur.parents):
+        cand = d / PROJECT_REGISTRY_REL
+        if cand.is_dir():
+            return cand
+        if (d / ".git").exists():
+            break
+    return None
+
+
+def resolve_registries(explicit: str | Path | None, cwd: str | Path = ".") -> list[Path]:
+    """Ordered registries to consult. Explicit --registry wins outright; otherwise
+    the repo's shared registry (if any) shadows the personal one by name."""
+    if explicit:
+        return [Path(explicit)]
+    dirs: list[Path] = []
+    proj = find_project_registry(cwd)
+    if proj:
+        dirs.append(proj)
+    if DEFAULT_REGISTRY.exists():
+        dirs.append(DEFAULT_REGISTRY)
+    return dirs or [DEFAULT_REGISTRY]
+
+
+def list_registries(dirs: list[Path]) -> list[dict]:
+    seen: set[str] = set()
+    out: list[dict] = []
+    for d in dirs:
+        for m in _latest_manifests(Path(d)):
+            if m["name"] not in seen:
+                seen.add(m["name"])
+                out.append(m)
+    return out
+
+
+def search_registries(dirs: list[Path], query: str) -> list[dict]:
+    seen: set[str] = set()
+    out: list[dict] = []
+    for d in dirs:
+        for m in search_registry(d, query):
+            if m["name"] not in seen:
+                seen.add(m["name"])
+                out.append(m)
+    return out
+
+
+def which_registry(dirs: list[Path], name: str) -> Path | None:
+    for d in dirs:
+        if (Path(d) / name).is_dir():
+            return Path(d)
+    return None
 
 
 # ---------- extract ----------

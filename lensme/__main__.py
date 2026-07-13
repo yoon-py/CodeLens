@@ -307,35 +307,50 @@ def cmd_merge(args) -> None:
 
 
 def cmd_extract(args) -> None:
-    from .registry import extract_component
+    from .registry import DEFAULT_REGISTRY, extract_component, project_registry_for
 
+    if args.registry:
+        registry = args.registry
+    elif args.share:
+        registry = project_registry_for(args.root or ".")
+    else:
+        registry = DEFAULT_REGISTRY
     manifest = extract_component(
         args.ontology, args.component,
-        registry_dir=args.registry, root=args.root, prefix=args.prefix,
+        registry_dir=registry, root=args.root, prefix=args.prefix,
         name=args.name,
     )
     print(f"extracted {manifest['name']}@{manifest['version']} "
           f"({len(manifest['interface']['entry_files']) + len(manifest['interface']['internal_files'])} files, "
           f"{len(manifest['interface']['exports'])} exports, "
           f"{len(manifest['tests'])} bundled tests)")
+    print(f"  -> {registry}")
+    if args.share:
+        print("  commit .lensme/registry/ so teammates can `lensme install` without re-extracting")
     if manifest["dependencies"]["internal_unresolved"]:
         print(f"unresolved (wire on install): {', '.join(manifest['dependencies']['internal_unresolved'])}")
 
 
 def cmd_registry(args) -> None:
-    from .registry import _latest_manifests, manifest_summary, search_registry
+    from .registry import (
+        list_registries, load_component, manifest_summary, resolve_registries,
+        search_registries, which_registry,
+    )
 
+    dirs = resolve_registries(args.registry, ".")
     if args.action == "list":
-        items = [manifest_summary(m) for m in _latest_manifests(Path(args.registry))]
+        items = [manifest_summary(m) for m in list_registries(dirs)]
     elif args.action == "search":
         if not args.query:
             sys.exit("usage: lensme registry search <query>")
-        items = [manifest_summary(m) for m in search_registry(args.registry, " ".join(args.query))]
+        items = [manifest_summary(m) for m in search_registries(dirs, " ".join(args.query))]
     else:  # show
-        from .registry import load_component
         if not args.query:
             sys.exit("usage: lensme registry show <name>")
-        manifest, _ = load_component(args.registry, args.query[0])
+        src = which_registry(dirs, args.query[0])
+        if src is None:
+            sys.exit(f"no component {args.query[0]!r} in {', '.join(str(d) for d in dirs)}")
+        manifest, _ = load_component(src, args.query[0])
         json.dump(manifest, sys.stdout, indent=2, ensure_ascii=False)
         print()
         return
@@ -351,13 +366,18 @@ def cmd_registry(args) -> None:
 
 
 def cmd_install(args) -> None:
-    from .registry import install_component
+    from .registry import install_component, resolve_registries, which_registry
 
+    dirs = resolve_registries(args.registry, args.dest)
+    src = which_registry(dirs, args.name)
+    if src is None:
+        sys.exit(f"no component {args.name!r} in {', '.join(str(d) for d in dirs)} "
+                 f"- run `lensme registry list` to see what's available")
     out = install_component(
-        args.registry, args.name, args.dest,
+        src, args.name, args.dest,
         version=args.version, target_ontology=args.target_ontology,
     )
-    print(f"installed {len(out['installed_files'])} files")
+    print(f"installed {len(out['installed_files'])} files (from {src})")
     print(f"wiring plan: {out['wiring_doc']}")
     for u in out["wiring_plan"]["unresolved"]:
         print(f"  wire {u['unresolved']}: {u['status']}"
@@ -506,28 +526,29 @@ def main(argv: list[str] | None = None) -> None:
     mg.add_argument("--tree", action="store_true", help="print the merged tree")
     mg.set_defaults(fn=cmd_merge)
 
-    from .registry import DEFAULT_REGISTRY
-
-    exs = sub.add_parser("extract", help="package an ontology component into the local registry")
+    exs = sub.add_parser("extract", help="package an ontology component into a registry")
     exs.add_argument("component", help="component name or id")
     exs.add_argument("--ontology", default="graphify-out/ontology.json")
-    exs.add_argument("--registry", default=str(DEFAULT_REGISTRY))
+    exs.add_argument("--registry", default=None,
+                     help="registry dir (default: ~/.lensme/registry, or repo's with --share)")
+    exs.add_argument("--share", action="store_true",
+                     help="write into the repo's .lensme/registry (commit it for teammates)")
     exs.add_argument("--root", default=None, help="repo root (default: saved build config)")
     exs.add_argument("--prefix", default=None, help="source prefix (default: saved build config)")
     exs.add_argument("--name", default=None, help="override registry component name")
     exs.set_defaults(fn=cmd_extract)
 
-    rg = sub.add_parser("registry", help="list/search/show local components")
+    rg = sub.add_parser("registry", help="list/search/show components (repo-shared then personal)")
     rg.add_argument("action", choices=["list", "search", "show"])
     rg.add_argument("query", nargs="*", help="search words or component name")
-    rg.add_argument("--registry", default=str(DEFAULT_REGISTRY))
+    rg.add_argument("--registry", default=None, help="force a single registry dir")
     rg.set_defaults(fn=cmd_registry)
 
     ins = sub.add_parser("install", help="vendor a component into a project + wiring plan")
     ins.add_argument("name", help="component name in the registry")
     ins.add_argument("dest", nargs="?", default=".", help="target project root")
     ins.add_argument("--version", default=None)
-    ins.add_argument("--registry", default=str(DEFAULT_REGISTRY))
+    ins.add_argument("--registry", default=None, help="force a single registry dir")
     ins.add_argument("--target-ontology", default=None,
                      help="target project's ontology.json for computed wiring matches")
     ins.set_defaults(fn=cmd_install)

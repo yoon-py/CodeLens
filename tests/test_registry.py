@@ -9,7 +9,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from lensme.build import build_ontology
 from lensme.registry import (
     extract_component, install_component, load_component, search_registry,
-    manifest_summary,
+    manifest_summary, find_project_registry, resolve_registries,
+    search_registries, which_registry, PROJECT_REGISTRY_REL,
 )
 from tests.test_build import _graph, _node, _write_sources
 
@@ -112,6 +113,53 @@ def test_wiring_matches_target_equivalent():
         out2 = install_component(reg, "invoice-ui", tmp / "newproj3")
         assert all(u["status"] == "no_target_ontology"
                    for u in out2["wiring_plan"]["unresolved"])
+
+
+def test_team_share_roundtrip():
+    # Alice extracts into a repo's shared registry; Bob (walking up from a
+    # subdir) resolves it without re-extracting and installs.
+    with tempfile.TemporaryDirectory() as td:
+        tmp = Path(td)
+        onto_path, _ = _setup(tmp)
+        repo = tmp / "teamrepo"
+        (repo / ".git").mkdir(parents=True)  # marks the repo root
+        shared = repo / PROJECT_REGISTRY_REL
+        extract_component(onto_path, "component_billing_services",
+                          registry_dir=shared, root=tmp, prefix="proj/", name="billing-api")
+
+        # a teammate working two dirs deep discovers the shared registry
+        deep = repo / "packages" / "web"
+        deep.mkdir(parents=True)
+        found = find_project_registry(deep)
+        assert found == shared.resolve(), found
+        dirs = resolve_registries(None, deep)
+        assert dirs[0] == shared.resolve()  # repo-shared shadows personal
+        assert which_registry(dirs, "billing-api") == shared.resolve()
+        # hermetic: the shared component is discoverable (personal registry on
+        # this machine may add others, so check membership, not list equality)
+        assert "billing-api" in [m["name"] for m in search_registries(dirs, "billing api")]
+
+        # install from the resolved shared registry
+        out = install_component(shared, "billing-api", deep, target_ontology=onto_path)
+        assert out["installed_files"]
+
+
+def test_project_registry_shadows_personal_by_name():
+    with tempfile.TemporaryDirectory() as td:
+        tmp = Path(td)
+        onto_path, personal = _setup(tmp)
+        # same-named component in two registries; project must win
+        extract_component(onto_path, "component_billing_services",
+                          registry_dir=personal, root=tmp, prefix="proj/", name="dup")
+        repo = tmp / "repo"
+        (repo / ".git").mkdir(parents=True)
+        shared = repo / PROJECT_REGISTRY_REL
+        extract_component(onto_path, "component_billing_components",
+                          registry_dir=shared, root=tmp, prefix="proj/", name="dup")
+        dirs = [shared, personal]
+        results = search_registries(dirs, "dup")
+        assert len(results) == 1, "same-named component must not appear twice"
+        assert which_registry(dirs, "dup") == shared
 
 
 if __name__ == "__main__":

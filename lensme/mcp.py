@@ -373,17 +373,20 @@ def tool_explain(onto: Onto, args: dict) -> dict:
     }
 
 
-def _registry_dir() -> str:
+def _registries() -> list:
+    """Registries an agent should consult: repo-shared (.lensme/registry, found
+    by walking up from cwd) then personal (~/.lensme/registry). LENSME_REGISTRY
+    forces a single explicit dir."""
     import os
 
-    from .registry import DEFAULT_REGISTRY
-    return os.environ.get("LENSME_REGISTRY", str(DEFAULT_REGISTRY))
+    from .registry import resolve_registries
+    return resolve_registries(os.environ.get("LENSME_REGISTRY"), ".")
 
 
 def tool_search_components(onto: Onto, args: dict) -> dict:
-    from .registry import manifest_summary, search_registry
+    from .registry import manifest_summary, search_registries
 
-    hits = search_registry(_registry_dir(), args["need"])
+    hits = search_registries(_registries(), args["need"])
     if not hits:
         return {"matches": [], "note": "no verified components match - generate this "
                                        "part from scratch, or extract one first with `lensme extract`"}
@@ -393,9 +396,12 @@ def tool_search_components(onto: Onto, args: dict) -> dict:
 
 
 def tool_get_component(onto: Onto, args: dict) -> dict:
-    from .registry import load_component
+    from .registry import load_component, which_registry
 
-    manifest, vdir = load_component(_registry_dir(), args["name"], args.get("version"))
+    src = which_registry(_registries(), args["name"])
+    if src is None:
+        return {"error": f"no component {args['name']!r} in any registry"}
+    manifest, vdir = load_component(src, args["name"], args.get("version"))
     if args.get("detail") != "full":
         return manifest
     sources = {}
@@ -406,10 +412,13 @@ def tool_get_component(onto: Onto, args: dict) -> dict:
 
 
 def tool_install_component(onto: Onto, args: dict) -> dict:
-    from .registry import install_component
+    from .registry import install_component, which_registry
 
+    src = which_registry(_registries(), args["name"])
+    if src is None:
+        return {"error": f"no component {args['name']!r} in any registry"}
     return install_component(
-        _registry_dir(), args["name"], args["dest_dir"],
+        src, args["name"], args["dest_dir"],
         version=args.get("version"), target_ontology=args.get("target_ontology"),
     )
 
