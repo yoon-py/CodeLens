@@ -1,4 +1,4 @@
-"""CLI: lensme scan | build | sync | serve | report | path | explain | symbols | tree | mcp | impact-check | hotspots | diff | merge."""
+"""CLI: lensme scan | build | sync | serve | report | path | explain | extract | registry | install | symbols | tree | mcp | impact-check | hotspots | diff | merge."""
 from __future__ import annotations
 
 import argparse
@@ -306,6 +306,65 @@ def cmd_merge(args) -> None:
         print_tree(system)
 
 
+def cmd_extract(args) -> None:
+    from .registry import extract_component
+
+    manifest = extract_component(
+        args.ontology, args.component,
+        registry_dir=args.registry, root=args.root, prefix=args.prefix,
+        name=args.name,
+    )
+    print(f"extracted {manifest['name']}@{manifest['version']} "
+          f"({len(manifest['interface']['entry_files']) + len(manifest['interface']['internal_files'])} files, "
+          f"{len(manifest['interface']['exports'])} exports, "
+          f"{len(manifest['tests'])} bundled tests)")
+    if manifest["dependencies"]["internal_unresolved"]:
+        print(f"unresolved (wire on install): {', '.join(manifest['dependencies']['internal_unresolved'])}")
+
+
+def cmd_registry(args) -> None:
+    from .registry import _latest_manifests, manifest_summary, search_registry
+
+    if args.action == "list":
+        items = [manifest_summary(m) for m in _latest_manifests(Path(args.registry))]
+    elif args.action == "search":
+        if not args.query:
+            sys.exit("usage: lensme registry search <query>")
+        items = [manifest_summary(m) for m in search_registry(args.registry, " ".join(args.query))]
+    else:  # show
+        from .registry import load_component
+        if not args.query:
+            sys.exit("usage: lensme registry show <name>")
+        manifest, _ = load_component(args.registry, args.query[0])
+        json.dump(manifest, sys.stdout, indent=2, ensure_ascii=False)
+        print()
+        return
+    if not items:
+        print("registry empty or no matches - run `lensme extract <component>` first")
+        return
+    for it in items:
+        tests = " [tests]" if it["has_tests"] else ""
+        print(f"{it['name']}@{it['version']} ({it['language']}, {it['confidence']}){tests}")
+        print(f"  {it['description'][:100]}")
+        if it["exports"]:
+            print(f"  exports: {', '.join(it['exports'][:6])}")
+
+
+def cmd_install(args) -> None:
+    from .registry import install_component
+
+    out = install_component(
+        args.registry, args.name, args.dest,
+        version=args.version, target_ontology=args.target_ontology,
+    )
+    print(f"installed {len(out['installed_files'])} files")
+    print(f"wiring plan: {out['wiring_doc']}")
+    for u in out["wiring_plan"]["unresolved"]:
+        print(f"  wire {u['unresolved']}: {u['status']}"
+              + (f" -> {u['candidates'][0]}" if u["candidates"] else ""))
+    print(f"  done when: {out['wiring_plan']['definition_of_done']}")
+
+
 def cmd_symbols(args) -> None:
     digest = symbol_digest(_load_graph(args.graph), args.prefix)
     cache_path = Path(args.graph).parent / SYMCACHE_NAME
@@ -446,6 +505,32 @@ def main(argv: list[str] | None = None) -> None:
     mg.add_argument("-o", "--output", default="system-ontology.json")
     mg.add_argument("--tree", action="store_true", help="print the merged tree")
     mg.set_defaults(fn=cmd_merge)
+
+    from .registry import DEFAULT_REGISTRY
+
+    exs = sub.add_parser("extract", help="package an ontology component into the local registry")
+    exs.add_argument("component", help="component name or id")
+    exs.add_argument("--ontology", default="graphify-out/ontology.json")
+    exs.add_argument("--registry", default=str(DEFAULT_REGISTRY))
+    exs.add_argument("--root", default=None, help="repo root (default: saved build config)")
+    exs.add_argument("--prefix", default=None, help="source prefix (default: saved build config)")
+    exs.add_argument("--name", default=None, help="override registry component name")
+    exs.set_defaults(fn=cmd_extract)
+
+    rg = sub.add_parser("registry", help="list/search/show local components")
+    rg.add_argument("action", choices=["list", "search", "show"])
+    rg.add_argument("query", nargs="*", help="search words or component name")
+    rg.add_argument("--registry", default=str(DEFAULT_REGISTRY))
+    rg.set_defaults(fn=cmd_registry)
+
+    ins = sub.add_parser("install", help="vendor a component into a project + wiring plan")
+    ins.add_argument("name", help="component name in the registry")
+    ins.add_argument("dest", nargs="?", default=".", help="target project root")
+    ins.add_argument("--version", default=None)
+    ins.add_argument("--registry", default=str(DEFAULT_REGISTRY))
+    ins.add_argument("--target-ontology", default=None,
+                     help="target project's ontology.json for computed wiring matches")
+    ins.set_defaults(fn=cmd_install)
 
     ic = sub.add_parser("impact-check",
                         help="blast radius of staged files (pre-commit, informational)")

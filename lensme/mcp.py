@@ -1,7 +1,9 @@
 """MCP server over stdio: agents query the ontology for architecture context.
 
 Zero-dependency JSON-RPC loop (MCP stdio transport is newline-delimited
-JSON-RPC 2.0). Exposes seven tools over a built ontology.json:
+JSON-RPC 2.0). Exposes ten tools over a built ontology.json (the three
+component-registry tools additionally read `~/.lensme/registry`, override
+with LENSME_REGISTRY):
 
   get_context - task-scoped bundle (files, symbols, deps, blast radius) in one
                 call, trimmed to a token budget - replaces ls/grep exploration
@@ -11,6 +13,9 @@ JSON-RPC 2.0). Exposes seven tools over a built ontology.json:
   impact      - "if I modify X, what is affected?"
   path        - shortest relationship path between two nodes with directions
   explain     - everything known about one node (component or file)
+  search_components / get_component / install_component
+              - assembly: find a verified component, vendor it, follow the
+                computed wiring plan, generate only glue
 
 Run: lensme mcp [--ontology graphify-out/ontology.json]
 Register (Claude Code): claude mcp add lensme -- lensme mcp --ontology /abs/path/ontology.json
@@ -368,6 +373,47 @@ def tool_explain(onto: Onto, args: dict) -> dict:
     }
 
 
+def _registry_dir() -> str:
+    import os
+
+    from .registry import DEFAULT_REGISTRY
+    return os.environ.get("LENSME_REGISTRY", str(DEFAULT_REGISTRY))
+
+
+def tool_search_components(onto: Onto, args: dict) -> dict:
+    from .registry import manifest_summary, search_registry
+
+    hits = search_registry(_registry_dir(), args["need"])
+    if not hits:
+        return {"matches": [], "note": "no verified components match - generate this "
+                                       "part from scratch, or extract one first with `lensme extract`"}
+    return {"matches": [manifest_summary(m) for m in hits[:5]],
+            "note": "metadata only; call get_component(detail='full') if you truly "
+                    "need the implementation, install_component to vendor it"}
+
+
+def tool_get_component(onto: Onto, args: dict) -> dict:
+    from .registry import load_component
+
+    manifest, vdir = load_component(_registry_dir(), args["name"], args.get("version"))
+    if args.get("detail") != "full":
+        return manifest
+    sources = {}
+    for f in sorted((vdir / "src").rglob("*")):
+        if f.is_file():
+            sources[str(f.relative_to(vdir / "src"))] = f.read_text(encoding="utf-8", errors="ignore")
+    return {**manifest, "sources": sources}
+
+
+def tool_install_component(onto: Onto, args: dict) -> dict:
+    from .registry import install_component
+
+    return install_component(
+        _registry_dir(), args["name"], args["dest_dir"],
+        version=args.get("version"), target_ontology=args.get("target_ontology"),
+    )
+
+
 TOOLS = {
     "get_context": (tool_get_context, "Task-scoped context bundle in ONE call: the owning component, ranked files with symbols, read-first suggestions, dependencies/dependents, and blast radius - trimmed to a token budget. Use this INSTEAD of exploring with ls/grep/find when starting a task.", {
         "type": "object",
@@ -408,6 +454,30 @@ TOOLS = {
         "type": "object",
         "properties": {"name": {"type": "string", "description": "component/file name or path"}},
         "required": ["name"],
+    }),
+    "search_components": (tool_search_components, "Search the local registry of verified, previously-extracted components BEFORE generating commodity code (auth, CRUD, upload, ...). Returns metadata + interface only - assembling a verified component beats regenerating it.", {
+        "type": "object",
+        "properties": {"need": {"type": "string", "description": "what you need, in a few words (e.g. 'image generation engine')"}},
+        "required": ["need"],
+    }),
+    "get_component": (tool_get_component, "Full manifest for one registry component; detail='full' additionally returns source files (token-expensive - prefer install_component).", {
+        "type": "object",
+        "properties": {
+            "name": {"type": "string"},
+            "version": {"type": "string"},
+            "detail": {"type": "string", "enum": ["interface", "full"]},
+        },
+        "required": ["name"],
+    }),
+    "install_component": (tool_install_component, "Vendor a registry component's source into the target project (shadcn-style copy) and return a computed wiring plan: what to connect where, config to provide, deps to install, and the definition of done. Follow the plan, generate only glue.", {
+        "type": "object",
+        "properties": {
+            "name": {"type": "string"},
+            "dest_dir": {"type": "string", "description": "target project root (absolute path)"},
+            "version": {"type": "string"},
+            "target_ontology": {"type": "string", "description": "target project's ontology.json - enables computed candidate matching"},
+        },
+        "required": ["name", "dest_dir"],
     }),
 }
 

@@ -174,6 +174,48 @@ metric (file localization vs. Q&A correctness), different ground truth
 methodology, one repo vs. their 31. Their [preprint](https://arxiv.org/abs/2603.27277)
 is worth reading for how a rigorous version of this benchmark looks.
 
+## Component assembly (registry)
+
+Most projects are combinations of commodity components. Instead of an agent
+regenerating auth/CRUD/upload/TTS from scratch every time, lensme extracts
+verified components from repos you own and lets an agent assemble them:
+
+```bash
+# in the source repo (ontology built):
+lensme extract "Text-to-Speech"          # package into ~/.lensme/registry
+
+# in any target project:
+lensme registry search "tts narration"   # find it
+lensme install text-to-speech . --target-ontology graphify-out/ontology.json
+```
+
+`install` vendors the source shadcn-style (copy it, own it - no package
+dependency) and writes a **computed wiring plan** (`WIRING.md`): every
+unresolved dependency is matched against the *target project's* ontology
+(`auto_matched` / `needs_decision` / `missing`), config keys are checked
+against the target's `.env`, external deps against its manifest, and the plan
+ends with an explicit definition of done. Both sides are ontologies, so
+wiring is graph matching, not guesswork. The same flow is exposed to agents
+as MCP tools: `search_components` / `get_component` / `install_component`.
+
+Verification is provenance, not marketing: each component records its source
+repo + commit (`EXTRACTED`) and carries its bundled tests when the ontology
+links any.
+
+Measured on three components extracted from a real production repo
+(`python examples/bench_assembly.py`, chars/4 estimate):
+
+| component | regenerate (emit tokens) | assemble (context tokens) | saved |
+|---|---|---|---|
+| text-to-speech (3 providers) | 5,746 | 365 | 94% |
+| image-generation | 2,835 | 308 | 89% |
+| job-store | 1,208 | 242 | 80% |
+
+The regeneration side is a lower bound (exploration and bug-iteration cost
+excluded), and glue code is excluded from both sides. The honest scope
+boundary: assembly wins on the commodity layer; project-unique business
+logic still gets generated.
+
 ## Validated against external repos
 
 Run on [FastAPI](https://github.com/fastapi/fastapi) (2,718 files, ~74% of
