@@ -26,7 +26,8 @@ SKIP_DIRS = {"src", "lib", "app"}  # conventional wrapper dirs to look past
 GENERIC_WORDS = {
     "src", "index", "main", "app", "config", "test", "tests", "spec", "specs",
     "types", "type", "hooks", "hook", "store", "stores", "services", "service",
-    "data", "views", "view", "components", "component", "styles", "style",
+    "data", "views", "view", "screens", "screen", "pages", "page",
+    "components", "component", "styles", "style",
     "utils", "util", "lib", "libs", "i18n", "env", "d", "nodes", "node",
     "shared", "core", "common", "helpers", "helper",
     "docs", "doc", "examples", "example", "scripts", "script", "tools", "tool",

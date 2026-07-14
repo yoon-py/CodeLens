@@ -162,6 +162,32 @@ def test_domain_words_frequency_floor():
     assert discover_domain_words(rels, tops) == []
 
 
+def test_screen_page_are_generic_not_domain_words():
+    # real bug (SnapMind, a cross-platform app): "screen" is a UI-layer word
+    # like "view", not a business domain - if it slips through as a domain
+    # word, files under the SAME topdir (e.g. "ios") split across two
+    # Features (one screen-named, one "shared") while keeping the identical
+    # Component name "Ios" in both, which reads as a duplicate/confusing map.
+    rels = [
+        "ios/HomeScreen.swift", "ios/DetailScreen.swift", "ios/AppDelegate.swift",
+        "ios/Bridge.swift", "ios/Utils.swift",
+        "web/HomeScreen.tsx", "web/DetailScreen.tsx", "web/SettingsScreen.tsx",
+        "web/api.ts", "web/router.tsx",
+    ]
+    tops = ["ios"] * 5 + ["web"] * 5
+    assert discover_domain_words(rels, tops) == []
+
+    g = {
+        "nodes": [_node(f"f{i}", p.rsplit("/", 1)[-1], f"proj/{p}") for i, p in enumerate(rels)],
+        "links": [],
+    }
+    onto = build_ontology(g, prefix="proj/", product_name="proj")
+    feats = {f["name"] for f in onto["children"]}
+    assert feats == {"Shared"}, feats  # no spurious "Screen" feature
+    comps = {c["name"] for f in onto["children"] for c in f["children"]}
+    assert comps == {"Ios", "Web"}  # each topdir appears exactly once
+
+
 def test_external_imports_matching():
     js = "import { useState } from 'react'\nimport Flow from '@xyflow/react'\n"
     assert _external_imports(js, ["react", "@xyflow/react", "zustand"]) == {"react", "@xyflow/react"}

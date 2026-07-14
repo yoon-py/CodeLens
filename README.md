@@ -431,6 +431,14 @@ The FastAPI failure modes are pinned as regression tests in
 `test_python_manifest_externals`, `test_flat_package_flag`,
 `test_scripts_dir_is_tooling_not_source`).
 
+Also caught on a real cross-platform (React Native + web) app: `"screen"` is
+a UI-layer word like `"view"` (already blocked), not a business domain - left
+unblocked, it made the same top-level directory (e.g. `ios/`) split across
+two Features under the identical Component name, which reads as a
+duplicate/confusing map rather than the intended cross-cutting grouping.
+Fixed by extending the existing generic-word list; pinned as
+`test_screen_page_are_generic_not_domain_words`.
+
 ## Where this is going
 
 Everything above works today, locally, with no account and no cloud. That's
