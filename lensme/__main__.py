@@ -1,4 +1,4 @@
-"""CLI: lensme scan | build | sync | serve | report | path | explain | extract | registry | install | symbols | tree | mcp | impact-check | hotspots | diff | merge."""
+"""CLI: lensme scan | cbm | build | sync | serve | report | path | explain | extract | registry | install | symbols | tree | mcp | impact-check | hotspots | diff | merge."""
 from __future__ import annotations
 
 import argparse
@@ -211,23 +211,35 @@ def cmd_serve(args) -> None:
 
 
 def cmd_scan(args) -> None:
-    """The single entry point: extract (graphify) + build + serve in one command."""
+    """The single entry point: extract (graphify|cbm) + build + serve in one command."""
     import shutil
     import subprocess
 
     root = Path(args.path).resolve()
     graph = root / "graphify-out" / "graph.json"
-    gf = shutil.which("graphify")
-    if not args.skip_extract and gf:
-        print("extracting code graph (graphify update)...")
-        subprocess.run([gf, "update", str(root)], check=True)
-    elif not graph.exists():
-        sys.exit(
-            "graphify not found and no existing graph.json.\n"
-            "install graphify first: https://github.com/Graphify-Labs/graphify"
-        )
+
+    if args.engine == "cbm":
+        from .cbm_adapter import build_cbm_graph_file
+        if args.skip_extract and graph.exists():
+            print(f"cbm not run - using existing {graph}")
+        else:
+            print("extracting code graph (codebase-memory-mcp)...")
+            project, stats = build_cbm_graph_file(
+                root, graph, cbm_bin=args.cbm_bin, reindex=not args.skip_extract
+            )
+            print(f"  cbm project {project}: {stats['nodes']} nodes, {stats['edges']} edges")
     else:
-        print(f"graphify not run - using existing {graph}")
+        gf = shutil.which("graphify")
+        if not args.skip_extract and gf:
+            print("extracting code graph (graphify update)...")
+            subprocess.run([gf, "update", str(root)], check=True)
+        elif not graph.exists():
+            sys.exit(
+                "graphify not found and no existing graph.json.\n"
+                "install graphify first: https://github.com/Graphify-Labs/graphify"
+            )
+        else:
+            print(f"graphify not run - using existing {graph}")
 
     cfg = {
         "graph": str(graph), "prefix": "", "root": str(root),
@@ -240,6 +252,19 @@ def cmd_scan(args) -> None:
     )
     args.graph, args.ontology = str(graph), cfg["output"]
     cmd_serve(args)
+
+
+def cmd_cbm(args) -> None:
+    """Produce graph.json from a codebase-memory-mcp index (then `lensme build`)."""
+    from .cbm_adapter import build_cbm_graph_file
+
+    root = Path(args.path).resolve()
+    out = Path(args.output) if args.output else root / "graphify-out" / "graph.json"
+    project, stats = build_cbm_graph_file(
+        root, out, cbm_bin=args.cbm_bin, reindex=args.reindex, mode=args.mode
+    )
+    print(f"wrote {out} (cbm project {project}: {stats['nodes']} nodes, {stats['edges']} edges)")
+    print(f"next: lensme build --graph {out} --name {root.name} [--prefix p/]")
 
 
 def cmd_report(args) -> None:
@@ -452,8 +477,11 @@ def main(argv: list[str] | None = None) -> None:
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument("--graph", default="graphify-out/graph.json", help="path to graphify graph.json")
 
-    sc = sub.add_parser("scan", help="one command: extract (graphify) + build + serve")
+    sc = sub.add_parser("scan", help="one command: extract (graphify|cbm) + build + serve")
     sc.add_argument("path", nargs="?", default=".", help="repo to map (default: cwd)")
+    sc.add_argument("--engine", choices=["graphify", "cbm"], default="graphify",
+                    help="code-graph backend (default: graphify)")
+    sc.add_argument("--cbm-bin", default=None, help="codebase-memory-mcp binary (default: PATH)")
     sc.add_argument("--name", default=None, help="product name (default: directory name)")
     sc.add_argument("--port", type=int, default=4173)
     sc.add_argument("--no-open", action="store_true", help="do not open a browser")
@@ -461,6 +489,14 @@ def main(argv: list[str] | None = None) -> None:
     sc.add_argument("--watch", action="store_true", help="rebuild when graph.json changes")
     sc.add_argument("--interval", type=float, default=2.0)
     sc.set_defaults(fn=cmd_scan)
+
+    cb = sub.add_parser("cbm", help="build graph.json from a codebase-memory-mcp index")
+    cb.add_argument("path", nargs="?", default=".", help="repo to index (default: cwd)")
+    cb.add_argument("--cbm-bin", default=None, help="codebase-memory-mcp binary (default: PATH)")
+    cb.add_argument("--reindex", action="store_true", help="re-index even if already indexed")
+    cb.add_argument("--mode", default="fast", help="cbm index mode (fast|moderate|full)")
+    cb.add_argument("-o", "--output", default=None, help="graph.json path (default: graphify-out/)")
+    cb.set_defaults(fn=cmd_cbm)
 
     b = sub.add_parser("build", parents=[common], help="build ontology.json from graph.json")
     b.add_argument("--prefix", default="", help="source_file prefix to scope to (e.g. 'myproj/')")

@@ -68,7 +68,7 @@ reads a `manifest.json` and a **computed wiring plan**.
 
 ```mermaid
 flowchart LR
-    R["your repo"] -->|"graphify (today)<br/>codebase-memory-mcp (planned)"| G["graph.json"]
+    R["your repo"] -->|"graphify or<br/>codebase-memory-mcp"| G["graph.json"]
     G -->|"lensme build"| O["ontology.json<br/>Product > Feature > Component"]
 
     subgraph U["🗺️ UNDERSTAND — human"]
@@ -267,12 +267,21 @@ Properties tab:
 - `INFERRED-heuristic` - path/naming rule
 - `INFERRED-llm` - agent classification (with rationale)
 
-**Backends**: lensme consumes a code graph, it doesn't build one. Today that
-graph comes from [graphify](https://github.com/Graphify-Labs/graphify); an
-adapter for [codebase-memory-mcp](https://github.com/DeusData/codebase-memory-mcp)
-(LSP-refined call edges, cross-service links) is planned — its schema has
-been validated against the lensme contract. The contact surface is six
-fields, deliberately small, so the graph engine is replaceable.
+**Backends**: lensme consumes a code graph, it doesn't build one — and it
+works on two engines today:
+
+- [graphify](https://github.com/Graphify-Labs/graphify) (default): `lensme scan .`
+- [codebase-memory-mcp](https://github.com/DeusData/codebase-memory-mcp)
+  (tree-sitter + LSP-refined call edges): `lensme scan . --engine cbm`, or
+  `lensme cbm <repo>` to emit `graph.json` then `lensme build`
+
+The cbm adapter (`lensme/cbm_adapter.py`) maps cbm's graph onto the same
+six-field contract graphify satisfies, talking to cbm only through its
+documented `query_graph` interface (never its internal SQLite). Because cbm
+pre-filters docs/tests/scripts at index time, its graph is a cleaner
+source-only view — mapping FastAPI's `fastapi/` package gave 55 source files
+straight through, no supporting-band cleanup needed. The contact surface is
+deliberately tiny, so the graph engine is replaceable.
 
 ## Output schema (`ontology.json`, schema_version 2)
 
@@ -385,14 +394,16 @@ Everything above works today, locally, with no account and no cloud. That's
 deliberate — the value has to be real on one machine before it's real for a
 team. The direction from here, in order:
 
-- **Now**: local ontology + map, agent READ tools, and a component registry
-  that works two ways — personal (`~/.lensme/registry`) and **team-shared**
-  (`.lensme/registry` committed in the repo). `lensme extract --share` writes
-  a component into the repo; a teammate runs `lensme install <name>` anywhere
-  in the tree and it's found by walking up — no re-extraction, no account.
-- **Then**: a `codebase-memory-mcp` backend adapter (LSP-refined call edges,
-  cross-service links) alongside graphify; the schema is already validated
-  against the lensme contract.
+- **Now**: local ontology + map, agent READ tools, two graph backends
+  (graphify and codebase-memory-mcp), and a component registry that works two
+  ways — personal (`~/.lensme/registry`) and **team-shared** (`.lensme/registry`
+  committed in the repo). `lensme extract --share` writes a component into the
+  repo; a teammate runs `lensme install <name>` anywhere in the tree and it's
+  found by walking up — no re-extraction, no account.
+- **Next**: a universal external-repo importer — point at any OSS repo, build
+  its ontology, and extract commodity components with an `IMPORTED` confidence
+  tag plus license and upstream provenance baked into the manifest. Format
+  adapters (shadcn, etc.) layer on top of that.
 - **Later**: a System-level (C4 L1) view across repos — `lensme merge` is the
   data-model seed for it today.
 
