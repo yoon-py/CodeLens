@@ -68,7 +68,7 @@ reads a `manifest.json` and a **computed wiring plan**.
 
 ```mermaid
 flowchart LR
-    R["your repo"] -->|"graphify or<br/>codebase-memory-mcp"| G["graph.json"]
+    R["your repo"] -->|"codebase-memory-mcp (default)<br/>or graphify"| G["graph.json"]
     G -->|"lensme build"| O["ontology.json<br/>Product > Feature > Component"]
 
     subgraph U["🗺️ UNDERSTAND — human"]
@@ -101,16 +101,21 @@ changing faster than anyone can read.
 # once: install (from this repo)
 uv tool install --editable ./lensme
 (cd lensme/ui && npm install && npm run build)
+# once: install the default engine (https://github.com/DeusData/codebase-memory-mcp)
 
-# one command: extract (graphify) + build ontology + open the map
+# one command: extract (cbm, by default) + build ontology + open the map
 lensme scan .
+# no cbm installed? use graphify instead:
+lensme scan . --engine graphify
 ```
 
-Or step by step: `graphify .` then `lensme build --name myproject` then
-`lensme serve`.
+`lensme scan` defaults to [codebase-memory-mcp](https://github.com/DeusData/codebase-memory-mcp)
+(faster, more precise call edges, filters docs/tests at index time — see
+[Design](#design) below) and falls back cleanly to a `--engine graphify`
+hint if it isn't installed.
 
-`lensme serve --watch` keeps the map fresh: when graphify rewrites
-`graph.json` (its `--watch` mode or commit hook), the ontology is rebuilt
+`lensme serve --watch` keeps the map fresh: when the graph engine rewrites
+`graph.json` (graphify's `--watch` mode/commit hook, or a re-run of `lensme scan`), the ontology is rebuilt
 automatically and the browser picks it up within seconds.
 
 ## WRITE in practice: component assembly
@@ -173,12 +178,12 @@ links any.
 ### Importing from external repos
 
 The same mechanism works on any open-source repo you don't own — clone it,
-build its ontology (`lensme scan --engine cbm` handles unfamiliar repos
-well), and extract with `--import`:
+build its ontology (`lensme scan .` handles unfamiliar repos well with the
+default cbm engine), and extract with `--import`:
 
 ```bash
 git clone https://github.com/kwhitley/itty-router && cd itty-router
-lensme scan . --engine cbm --no-open
+lensme scan . --no-open
 lensme extract "Router" --import --name itty-router
 #   extracted itty-router@1.0.0 (IMPORTED, 3 files, 7 exports)
 #   license: MIT  source: https://github.com/kwhitley/itty-router
@@ -241,7 +246,7 @@ and description are what make it findable.
 
 | command | what it does |
 |---|---|
-| `lensme scan [path]` | one command: graphify extract + build + serve |
+| `lensme scan [path] [--engine cbm\|graphify]` | one command: extract (cbm by default) + build + serve |
 | `lensme extract "Component" [--share] [--import]` | package a component into the registry; `--share` writes into the repo, `--import` marks external code with license + provenance |
 | `lensme registry list\|search\|show` | browse/search the local component registry |
 | `lensme install <name> [dest] [--target-ontology o.json]` | vendor a component + computed wiring plan |
@@ -297,10 +302,13 @@ Properties tab:
 **Backends**: lensme consumes a code graph, it doesn't build one — and it
 works on two engines today:
 
-- [graphify](https://github.com/Graphify-Labs/graphify) (default): `lensme scan .`
 - [codebase-memory-mcp](https://github.com/DeusData/codebase-memory-mcp)
-  (tree-sitter + LSP-refined call edges): `lensme scan . --engine cbm`, or
-  `lensme cbm <repo>` to emit `graph.json` then `lensme build`
+  (default): tree-sitter + LSP-refined call edges, filters docs/tests/scripts
+  at index time. `lensme scan .`, or `lensme cbm <repo>` to emit `graph.json`
+  then `lensme build` step by step.
+- [graphify](https://github.com/Graphify-Labs/graphify): `lensme scan . --engine graphify`.
+  Reach for this one when you want a single graph spanning code *and*
+  non-code content (docs, papers, specs) — cbm is code-only by design.
 
 The cbm adapter (`lensme/cbm_adapter.py`) maps cbm's graph onto the same
 six-field contract graphify satisfies, talking to cbm only through its

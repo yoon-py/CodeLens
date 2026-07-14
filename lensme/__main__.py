@@ -220,14 +220,18 @@ def cmd_scan(args) -> None:
 
     if args.engine == "cbm":
         from .cbm_adapter import build_cbm_graph_file
+
         if args.skip_extract and graph.exists():
             print(f"cbm not run - using existing {graph}")
         else:
-            print("extracting code graph (codebase-memory-mcp)...")
-            project, stats = build_cbm_graph_file(
-                root, graph, cbm_bin=args.cbm_bin, reindex=not args.skip_extract
-            )
-            print(f"  cbm project {project}: {stats['nodes']} nodes, {stats['edges']} edges")
+            try:
+                print("extracting code graph (codebase-memory-mcp)...")
+                project, stats = build_cbm_graph_file(
+                    root, graph, cbm_bin=args.cbm_bin, reindex=not args.skip_extract
+                )
+                print(f"  cbm project {project}: {stats['nodes']} nodes, {stats['edges']} edges")
+            except FileNotFoundError as e:
+                sys.exit(f"{e}\n(or use --engine graphify if that's installed instead)")
     else:
         gf = shutil.which("graphify")
         if not args.skip_extract and gf:
@@ -488,8 +492,9 @@ def main(argv: list[str] | None = None) -> None:
 
     sc = sub.add_parser("scan", help="one command: extract (graphify|cbm) + build + serve")
     sc.add_argument("path", nargs="?", default=".", help="repo to map (default: cwd)")
-    sc.add_argument("--engine", choices=["graphify", "cbm"], default="graphify",
-                    help="code-graph backend (default: graphify)")
+    sc.add_argument("--engine", choices=["graphify", "cbm"], default="cbm",
+                    help="code-graph backend (default: cbm - faster, more precise "
+                         "call edges, filters docs/tests at index time)")
     sc.add_argument("--cbm-bin", default=None, help="codebase-memory-mcp binary (default: PATH)")
     sc.add_argument("--name", default=None, help="product name (default: directory name)")
     sc.add_argument("--port", type=int, default=4173)
