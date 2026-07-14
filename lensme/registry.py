@@ -115,6 +115,54 @@ def _git_head(repo: Path) -> str:
         return ""
 
 
+def _git_remote(repo: Path) -> str:
+    try:
+        url = subprocess.run(
+            ["git", "-C", str(repo), "remote", "get-url", "origin"],
+            capture_output=True, text=True, check=True,
+        ).stdout.strip()
+        return re.sub(r"^git@([^:]+):", r"https://\1/", url).removesuffix(".git")
+    except (subprocess.CalledProcessError, OSError):
+        return ""
+
+
+# ---------- license: honesty layer for imported (not-your-own) code ----------
+
+# Weak + strong copyleft: vendoring these into proprietary code has obligations,
+# so install flags them. Permissive licenses only require attribution.
+COPYLEFT = {"GPL-2.0", "GPL-3.0", "LGPL-2.1", "LGPL-3.0", "AGPL-3.0", "MPL-2.0", "EPL-2.0"}
+_LICENSE_FILES = ("LICENSE", "LICENSE.md", "LICENSE.txt", "LICENCE", "COPYING", "COPYING.md")
+_LICENSE_SIGNATURES = (  # order matters: check specific before generic
+    ("AGPL-3.0", ("GNU AFFERO GENERAL PUBLIC LICENSE",)),
+    ("GPL-3.0", ("GNU GENERAL PUBLIC LICENSE", "Version 3")),
+    ("GPL-2.0", ("GNU GENERAL PUBLIC LICENSE", "Version 2")),
+    ("LGPL-3.0", ("GNU LESSER GENERAL PUBLIC LICENSE", "Version 3")),
+    ("LGPL-2.1", ("GNU LESSER GENERAL PUBLIC LICENSE", "Version 2.1")),
+    ("MPL-2.0", ("Mozilla Public License", "2.0")),
+    ("Apache-2.0", ("Apache License", "Version 2.0")),
+    ("MIT", ("Permission is hereby granted, free of charge",)),
+    ("ISC", ("ISC License",)),
+    ("BSD-3-Clause", ("Redistribution and use", "Neither the name")),
+    ("BSD-2-Clause", ("Redistribution and use",)),
+    ("Unlicense", ("This is free and unencumbered software released into the public domain",)),
+)
+
+
+def detect_license(root: str | Path) -> tuple[str | None, str | None]:
+    """(SPDX id, license-file relpath) for a repo root. 'UNKNOWN' if a license
+    file exists but isn't recognized; (None, None) if there's no license file."""
+    root = Path(root)
+    for fname in _LICENSE_FILES:
+        path = root / fname
+        if path.exists():
+            text = _read_text(path)
+            for spdx, needles in _LICENSE_SIGNATURES:
+                if all(n.lower() in text.lower() for n in needles):
+                    return spdx, fname
+            return "UNKNOWN", fname
+    return None, None
+
+
 # ---------- registry resolution: personal (~/) vs team-shared (in-repo) ----------
 
 def _git_root(start: str | Path) -> Path:
@@ -199,13 +247,23 @@ def extract_component(
     root: str | Path | None = None,
     prefix: str | None = None,
     name: str | None = None,
+    imported: bool = False,
+    source_url: str | None = None,
+    license: str | None = None,
 ) -> dict:
-    """Package one ontology component into the registry. Returns the manifest."""
+    """Package one ontology component into the registry. Returns the manifest.
+
+    `imported=True` marks a component pulled from someone else's repo: confidence
+    becomes IMPORTED (you're trusting an external source, not your own prod-tested
+    code), and license/source_url are captured so vendoring stays honest."""
     onto_path = Path(onto_path)
     onto = json.loads(onto_path.read_text(encoding="utf-8"))
     cfg = _load_build_config(onto_path)
     root = Path(root if root is not None else cfg.get("root", "."))
     prefix = prefix if prefix is not None else cfg.get("prefix", "")
+
+    detected_license, license_file = detect_license(root)
+    lic = license or detected_license
 
     comp = _find_component(onto, component_ref)
     if comp is None:
@@ -299,12 +357,15 @@ def extract_component(
         "version": version,
         "language": language,
         "description": comp.get("description") or comp.get("rationale") or "",
-        "confidence": "EXTRACTED",
+        "confidence": "IMPORTED" if imported else "EXTRACTED",
         "provenance": {
             "repo": onto.get("name", ""),
             "commit": _git_head(root),
             "component_id": comp["id"],
             "extracted_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "source_url": source_url or _git_remote(root),
+            "license": lic,
+            "license_file": license_file,
         },
         "interface": {
             "entry_files": entry_files,
@@ -332,6 +393,9 @@ def extract_component(
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(_read_text(root / (prefix + tpath)), encoding="utf-8")
     dest.mkdir(parents=True, exist_ok=True)
+    # bundle the upstream license text so vendoring carries the obligation
+    if license_file and (root / license_file).exists():
+        (dest / "LICENSE").write_text(_read_text(root / license_file), encoding="utf-8")
     (dest / "manifest.json").write_text(
         json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8"
     )
@@ -399,8 +463,8 @@ def manifest_summary(m: dict) -> dict:
         "language": m["language"],
         "description": m.get("description", ""),
         "confidence": m.get("confidence"),
-        "provenance": {k: m["provenance"][k] for k in ("repo", "extracted_at")
-                       if k in m.get("provenance", {})},
+        "provenance": {k: m["provenance"][k] for k in ("repo", "source_url", "license", "extracted_at")
+                       if m.get("provenance", {}).get(k)},
         "exports": [e["name"] for e in m.get("interface", {}).get("exports", [])][:15],
         "external_deps": m.get("dependencies", {}).get("external", []),
         "unresolved": m.get("dependencies", {}).get("internal_unresolved", []),
@@ -454,9 +518,11 @@ def install_component(
         text = src.read_text(encoding="utf-8", errors="ignore")
         prefix = _COMMENT_PREFIX.get(src.suffix)
         if prefix:
+            prov = manifest.get("provenance", {})
+            lic = f" license {prov['license']}" if prov.get("license") else ""
             stamp = (f"{prefix} lensme component: {manifest['name']}@{manifest['version']} "
-                     f"from {manifest['provenance'].get('repo', '?')} "
-                     f"({manifest['confidence']})\n")
+                     f"from {prov.get('source_url') or prov.get('repo', '?')} "
+                     f"({manifest['confidence']}{lic})\n")
             text = stamp + text
         out.write_text(text, encoding="utf-8")
         installed.append(str(out))
@@ -468,6 +534,11 @@ def install_component(
                 out.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(src, out)
                 installed.append(str(out))
+    # carry the upstream license alongside the vendored source
+    if (vdir / "LICENSE").exists():
+        out = dest_root / "LICENSE"
+        shutil.copyfile(vdir / "LICENSE", out)
+        installed.append(str(out))
 
     plan = wiring_plan(manifest, dest_dir, target_ontology)
     (dest_root / "WIRING.md").write_text(format_wiring(manifest, plan), encoding="utf-8")
@@ -541,10 +612,26 @@ def wiring_plan(manifest: dict, dest_dir: str | Path, target_ontology: str | Pat
         for d in manifest.get("dependencies", {}).get("external", [])
     ]
 
+    prov = manifest.get("provenance", {})
+    lic = prov.get("license")
+    if manifest.get("confidence") == "IMPORTED" or lic:
+        license_out = {
+            "spdx": lic,
+            "source_url": prov.get("source_url"),
+            "action": (
+                "copyleft/unknown - review obligations before vendoring into proprietary code"
+                if (lic in COPYLEFT or lic in (None, "UNKNOWN")) else
+                "permissive - keep the bundled LICENSE file for attribution"
+            ),
+        }
+    else:
+        license_out = None
+
     return {
         "unresolved": unresolved_out,
         "config": config_out,
         "external_deps": deps_out,
+        "license": license_out,
         "definition_of_done": (
             "bundled tests pass in the target project"
             if manifest.get("tests") else
@@ -574,5 +661,16 @@ def format_wiring(manifest: dict, plan: dict) -> str:
     L += [f"- `{c['key']}`: {c['status']}" for c in plan["config"]] or ["- none"]
     L += ["", "## 3. Install deps", ""]
     L += [f"- `{d['name']}`: {d['status']}" for d in plan["external_deps"]] or ["- none"]
-    L += ["", "## 4. Definition of done", "", f"- {plan['definition_of_done']}", ""]
+    lic = plan.get("license")
+    if lic:
+        warn = "⚠️ " if "copyleft/unknown" in lic["action"] else ""
+        L += ["", "## 4. License", "",
+              f"- {warn}**{lic['spdx'] or 'UNKNOWN'}** - {lic['action']}"]
+        if lic.get("source_url"):
+            L += [f"- source: {lic['source_url']}"]
+        L += ["- the upstream LICENSE is vendored alongside the source; keep it"]
+        step = "5"
+    else:
+        step = "4"
+    L += ["", f"## {step}. Definition of done", "", f"- {plan['definition_of_done']}", ""]
     return "\n".join(L)

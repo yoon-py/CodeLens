@@ -343,12 +343,17 @@ def cmd_extract(args) -> None:
     manifest = extract_component(
         args.ontology, args.component,
         registry_dir=registry, root=args.root, prefix=args.prefix,
-        name=args.name,
+        name=args.name, imported=args.import_, source_url=args.source_url,
+        license=args.license,
     )
     print(f"extracted {manifest['name']}@{manifest['version']} "
-          f"({len(manifest['interface']['entry_files']) + len(manifest['interface']['internal_files'])} files, "
+          f"({manifest['confidence']}, "
+          f"{len(manifest['interface']['entry_files']) + len(manifest['interface']['internal_files'])} files, "
           f"{len(manifest['interface']['exports'])} exports, "
           f"{len(manifest['tests'])} bundled tests)")
+    prov = manifest["provenance"]
+    if prov.get("license"):
+        print(f"  license: {prov['license']}" + (f"  source: {prov['source_url']}" if prov.get("source_url") else ""))
     print(f"  -> {registry}")
     if args.share:
         print("  commit .lensme/registry/ so teammates can `lensme install` without re-extracting")
@@ -407,6 +412,10 @@ def cmd_install(args) -> None:
     for u in out["wiring_plan"]["unresolved"]:
         print(f"  wire {u['unresolved']}: {u['status']}"
               + (f" -> {u['candidates'][0]}" if u["candidates"] else ""))
+    lic = out["wiring_plan"].get("license")
+    if lic:
+        warn = "⚠️  " if "copyleft/unknown" in lic["action"] else ""
+        print(f"  {warn}license {lic['spdx'] or 'UNKNOWN'}: {lic['action']}")
     print(f"  done when: {out['wiring_plan']['definition_of_done']}")
 
 
@@ -572,6 +581,10 @@ def main(argv: list[str] | None = None) -> None:
     exs.add_argument("--root", default=None, help="repo root (default: saved build config)")
     exs.add_argument("--prefix", default=None, help="source prefix (default: saved build config)")
     exs.add_argument("--name", default=None, help="override registry component name")
+    exs.add_argument("--import", dest="import_", action="store_true",
+                     help="mark as IMPORTED (someone else's repo): captures license + source")
+    exs.add_argument("--source-url", default=None, help="upstream URL (default: git remote origin)")
+    exs.add_argument("--license", default=None, help="SPDX id override (default: auto-detect)")
     exs.set_defaults(fn=cmd_extract)
 
     rg = sub.add_parser("registry", help="list/search/show components (repo-shared then personal)")

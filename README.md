@@ -170,6 +170,33 @@ Verification is provenance, not marketing: each component records its source
 repo + commit (`EXTRACTED`) and carries its bundled tests when the ontology
 links any.
 
+### Importing from external repos
+
+The same mechanism works on any open-source repo you don't own — clone it,
+build its ontology (`lensme scan --engine cbm` handles unfamiliar repos
+well), and extract with `--import`:
+
+```bash
+git clone https://github.com/kwhitley/itty-router && cd itty-router
+lensme scan . --engine cbm --no-open
+lensme extract "Router" --import --name itty-router
+#   extracted itty-router@1.0.0 (IMPORTED, 3 files, 7 exports)
+#   license: MIT  source: https://github.com/kwhitley/itty-router
+```
+
+`--import` flips the honesty layer on. The manifest is stamped `IMPORTED`
+(you're trusting someone else's code, not your own prod-tested code), the
+license is auto-detected from the repo's `LICENSE`, and the source URL comes
+from `git remote`. On install, the upstream LICENSE is vendored next to the
+source, every file header records `from <url> (IMPORTED license MIT)`, and
+`WIRING.md` gains a License section — **permissive** licenses just remind you
+to keep the attribution, **copyleft/unknown** ones warn before you vendor
+into proprietary code. This is what keeps "verified" honest across the line
+between your code and a stranger's.
+
+Format-specific catalogs (shadcn, etc.) can layer on top of this universal
+path later as thin adapters.
+
 **Measured** (`python examples/bench_assembly.py`, chars/4 estimate):
 
 | component | regenerate (emit tokens) | assemble (context tokens) | saved |
@@ -215,7 +242,7 @@ and description are what make it findable.
 | command | what it does |
 |---|---|
 | `lensme scan [path]` | one command: graphify extract + build + serve |
-| `lensme extract "Component" [--share]` | package a component into `~/.lensme/registry` (or the repo's `.lensme/registry` with `--share`) |
+| `lensme extract "Component" [--share] [--import]` | package a component into the registry; `--share` writes into the repo, `--import` marks external code with license + provenance |
 | `lensme registry list\|search\|show` | browse/search the local component registry |
 | `lensme install <name> [dest] [--target-ontology o.json]` | vendor a component + computed wiring plan |
 | `lensme report [-o ARCHITECTURE.md]` | living architecture doc: structure, relationships, externals, blast radius, hotspots |

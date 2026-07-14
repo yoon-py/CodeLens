@@ -10,8 +10,12 @@ from lensme.build import build_ontology
 from lensme.registry import (
     extract_component, install_component, load_component, search_registry,
     manifest_summary, find_project_registry, resolve_registries,
-    search_registries, which_registry, PROJECT_REGISTRY_REL,
+    search_registries, which_registry, PROJECT_REGISTRY_REL, detect_license,
 )
+
+MIT_TEXT = ("MIT License\n\nCopyright (c) 2026\n\n"
+            "Permission is hereby granted, free of charge, to any person obtaining a copy\n")
+GPL_TEXT = "GNU GENERAL PUBLIC LICENSE\nVersion 3, 29 June 2007\n"
 from tests.test_build import _graph, _node, _write_sources
 
 
@@ -160,6 +164,60 @@ def test_project_registry_shadows_personal_by_name():
         results = search_registries(dirs, "dup")
         assert len(results) == 1, "same-named component must not appear twice"
         assert which_registry(dirs, "dup") == shared
+
+
+def test_detect_license():
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        assert detect_license(root) == (None, None)  # no license file
+        (root / "LICENSE").write_text(MIT_TEXT, encoding="utf-8")
+        assert detect_license(root) == ("MIT", "LICENSE")
+        (root / "LICENSE").write_text(GPL_TEXT, encoding="utf-8")
+        assert detect_license(root) == ("GPL-3.0", "LICENSE")
+        (root / "LICENSE").write_text("some homemade terms", encoding="utf-8")
+        assert detect_license(root) == ("UNKNOWN", "LICENSE")
+
+
+def test_import_honesty_layer():
+    with tempfile.TemporaryDirectory() as td:
+        tmp = Path(td)
+        onto_path, reg = _setup(tmp)
+        (tmp / "LICENSE").write_text(MIT_TEXT, encoding="utf-8")
+        m = extract_component(onto_path, "component_billing_services",
+                              registry_dir=reg, root=tmp, prefix="proj/", name="ext-api",
+                              imported=True, source_url="https://github.com/acme/ext")
+        assert m["confidence"] == "IMPORTED"
+        assert m["provenance"]["license"] == "MIT"
+        assert m["provenance"]["source_url"] == "https://github.com/acme/ext"
+        # license text bundled into the registry
+        assert (reg / "ext-api/1.0.0/LICENSE").read_text().startswith("MIT License")
+        # summary carries license so an agent sees it before installing
+        s = manifest_summary(m)
+        assert s["provenance"]["license"] == "MIT"
+
+        # install surfaces a permissive-license action + vendors the LICENSE
+        dest = tmp / "consumer"
+        dest.mkdir()
+        out = install_component(reg, "ext-api", dest, target_ontology=onto_path)
+        assert (dest / "ext-api" / "LICENSE").exists()
+        assert out["wiring_plan"]["license"]["spdx"] == "MIT"
+        assert "permissive" in out["wiring_plan"]["license"]["action"]
+        # vendored source header records confidence + license
+        stamped = next(f for f in out["installed_files"] if f.endswith(".ts"))
+        assert "IMPORTED license MIT" in Path(stamped).read_text(encoding="utf-8")
+
+
+def test_import_copyleft_warning():
+    with tempfile.TemporaryDirectory() as td:
+        tmp = Path(td)
+        onto_path, reg = _setup(tmp)
+        (tmp / "LICENSE").write_text(GPL_TEXT, encoding="utf-8")
+        extract_component(onto_path, "component_billing_services",
+                          registry_dir=reg, root=tmp, prefix="proj/", name="gpl-thing",
+                          imported=True)
+        out = install_component(reg, "gpl-thing", tmp / "proj2", target_ontology=onto_path)
+        assert out["wiring_plan"]["license"]["spdx"] == "GPL-3.0"
+        assert "copyleft" in out["wiring_plan"]["license"]["action"]
 
 
 if __name__ == "__main__":
