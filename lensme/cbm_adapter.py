@@ -127,6 +127,40 @@ def cbm_graph(project: str, cbm_bin: str | None = None) -> dict:
     return {"nodes": nodes, "links": links}
 
 
+def _free_port() -> int:
+    import socket
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+def launch_ui(root: str | Path, cbm_bin: str | None = None) -> tuple[subprocess.Popen, str]:
+    """Start cbm's embedded 3D graph UI (a live server, not a static file - the
+    `-ui` release asset only; the plain binary refuses with a clear message) as
+    a background subprocess, scoped to `root`'s already-indexed project.
+
+    stdin is left as an open pipe on purpose: cbm's process is fundamentally an
+    MCP stdio server that `--ui` layers an HTTP server on top of, and it treats
+    stdin EOF as "client disconnected" and shuts down - closing it (or DEVNULL,
+    which reads as immediate EOF) kills the UI instantly. An open, unwritten
+    PIPE never signals EOF, so the server stays up for the caller's lifetime.
+    The caller must terminate the returned process itself; it does not exit on
+    its own once started this way.
+    """
+    bin_ = _cbm_bin(cbm_bin)
+    project = find_project(root, bin_)
+    if project is None:
+        raise RuntimeError(f"{root} is not cbm-indexed - run `lensme cbm {root}` first")
+    port = _free_port()
+    proc = subprocess.Popen(
+        [bin_, "--ui=true", f"--port={port}"],
+        stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
+    url = f"http://127.0.0.1:{port}/?tab=graph&project={project}"
+    return proc, url
+
+
 def build_cbm_graph_file(
     root: str | Path, out_path: str | Path,
     *, cbm_bin: str | None = None, reindex: bool = False, mode: str = "fast",

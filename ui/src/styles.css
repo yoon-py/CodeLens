@@ -104,6 +104,14 @@ body {
 }
 .view-tab.active { background: var(--border); color: var(--text); }
 .graph-frame { flex: 1; width: 100%; border: none; background: var(--bg); }
+.graph-frame-status {
+  flex: 1; width: 100%; display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 12px; color: var(--text-dim); background: var(--bg);
+}
+.graph-frame-link {
+  padding: 8px 16px; border-radius: 8px; background: var(--c-component); color: var(--bg);
+  text-decoration: none; font-weight: 600;
+}
 
 .symbol-list { max-height: 220px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; }
 .symbol-row {

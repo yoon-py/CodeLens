@@ -310,6 +310,14 @@ works on two engines today:
   Reach for this one when you want a single graph spanning code *and*
   non-code content (docs, papers, specs) — cbm is code-only by design.
 
+The UI's **Code Graph** tab reflects whichever engine built the map: with
+graphify it embeds `graph.html` in place; with cbm it launches cbm's own
+[3D graph UI](https://github.com/DeusData/codebase-memory-mcp) (the `-ui`
+release asset - the plain binary doesn't include it) as a live server and
+opens it in a new tab, since its CSP blocks iframing. Requires the `-ui`
+binary and `lensme cbm`/`lensme scan --engine cbm` to have indexed the repo
+first.
+
 The cbm adapter (`lensme/cbm_adapter.py`) maps cbm's graph onto the same
 six-field contract graphify satisfies, talking to cbm only through its
 documented `query_graph` interface (never its internal SQLite). Because cbm

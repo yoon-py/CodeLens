@@ -129,6 +129,11 @@ def cmd_serve(args) -> None:
         sys.exit(f"{onto_path} not found - run `lensme build` first")
     graph_html = onto_path.parent / "graph.html"  # graphify's raw code graph (Code Graph tab)
     hotspots_path = onto_path.parent / "hotspots.json"  # optional: `lensme hotspots` output
+    try:
+        cbm_root = _load_config(args.graph).get("root")
+    except SystemExit:
+        cbm_root = None
+    cbm_ui: dict = {}  # lazily filled: {"proc": Popen, "url": str} on first /api/code-graph hit
     # injected when serving graph.html: ?q=<label> focuses the matching node using
     # the globals graphify's page already exposes (RAW_NODES, focusNode)
     focus_loader = b"""<script>
@@ -144,6 +149,31 @@ def cmd_serve(args) -> None:
   setTimeout(go, 2500);     // again once physics settles
 })();
 </script></body>"""
+
+    def _code_graph_info() -> dict:
+        """graph.html (graphify, embeddable) if it exists; else try cbm's live
+        3D UI (a separate server - its CSP sends frame-ancestors 'none', so the
+        frontend opens it in a new tab instead of iframing it)."""
+        if graph_html.exists():
+            return {"type": "iframe", "url": "/graph.html"}
+        if not cbm_root:
+            return {"type": "none"}
+        if "proc" not in cbm_ui:
+            try:
+                from .cbm_adapter import launch_ui
+                proc, cbm_url = launch_ui(cbm_root)
+            except (FileNotFoundError, RuntimeError) as e:
+                return {"type": "none", "error": str(e)}
+            cbm_ui["proc"], cbm_ui["url"] = proc, cbm_url
+        import urllib.error
+        import urllib.request
+        for _ in range(20):  # ~2s: wait for the just-spawned server to bind
+            try:
+                urllib.request.urlopen(cbm_ui["url"], timeout=0.2)
+                break
+            except (urllib.error.URLError, TimeoutError):
+                time.sleep(0.1)
+        return {"type": "external", "url": cbm_ui["url"]}
 
     class Handler(http.server.SimpleHTTPRequestHandler):
         def __init__(self, *a, **kw):
@@ -174,6 +204,9 @@ def cmd_serve(args) -> None:
                     self._serve_bytes(body, "text/html; charset=utf-8")
                 else:
                     self.send_error(404, "graph.html not found - run graphify export first")
+                return
+            if route == "/api/code-graph":
+                self._serve_bytes(json.dumps(_code_graph_info()).encode(), "application/json")
                 return
             super().do_GET()
 
@@ -208,6 +241,9 @@ def cmd_serve(args) -> None:
         server.serve_forever()
     except KeyboardInterrupt:
         print("\nstopped")
+    finally:
+        if "proc" in cbm_ui:
+            cbm_ui["proc"].terminate()
 
 
 def cmd_scan(args) -> None:

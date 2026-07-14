@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   Background, MiniMap, ReactFlow, ReactFlowProvider, useReactFlow,
 } from '@xyflow/react'
@@ -137,15 +137,48 @@ function Canvas() {
   )
 }
 
-function CanvasOrGraph() {
-  const view = useOnto((s) => s.view)
+type CodeGraphInfo = { type: 'iframe' | 'external' | 'none'; url?: string; error?: string }
+
+function CodeGraphPane() {
   const graphFocus = useOnto((s) => s.graphFocus)
-  if (view === 'graph') {
+  const [info, setInfo] = useState<CodeGraphInfo | null>(null)
+
+  useEffect(() => {
+    fetch('/api/code-graph').then((r) => r.json()).then(setInfo).catch(() => setInfo({ type: 'none' }))
+  }, [])
+
+  if (!info) return <div className="graph-frame-status">loading…</div>
+
+  if (info.type === 'iframe') {
     // graphify's self-contained interactive graph, served by `lensme serve`;
     // ?q= is handled by a loader the server injects (focuses the matching node)
-    const src = '/graph.html' + (graphFocus ? `?q=${encodeURIComponent(graphFocus)}` : '')
+    const src = info.url + (graphFocus ? `?q=${encodeURIComponent(graphFocus)}` : '')
     return <iframe className="graph-frame" src={src} title="Code Graph" />
   }
+
+  if (info.type === 'external') {
+    // codebase-memory-mcp's 3D graph UI: a separate live server whose CSP
+    // (frame-ancestors 'none') blocks iframing, so it opens in a new tab
+    return (
+      <div className="graph-frame-status">
+        <p>3D code graph (codebase-memory-mcp)</p>
+        <a href={info.url} target="_blank" rel="noreferrer" className="graph-frame-link">
+          Open in new tab ↗
+        </a>
+      </div>
+    )
+  }
+
+  return (
+    <div className="graph-frame-status">
+      no code graph available{info.error ? ` — ${info.error}` : ' - run graphify export, or lensme cbm, first'}
+    </div>
+  )
+}
+
+function CanvasOrGraph() {
+  const view = useOnto((s) => s.view)
+  if (view === 'graph') return <CodeGraphPane />
   return <Canvas />
 }
 
