@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { Hotspots, IndexEntry, Ontology, OntoNode, Relationship } from './types'
+import { allFolderIds, buildFolderTree, type FolderNode } from './folderLayout'
 
 /** Reverse BFS over file_relationships: which files break if this one changes? */
 export function fileBlastRadius(frs: Relationship[], fileId: string) {
@@ -25,8 +26,10 @@ export function fileBlastRadius(frs: Relationship[], fileId: string) {
 interface OntoState {
   ontology: Ontology | null
   index: Map<string, IndexEntry>
+  folderTree: FolderNode | null   // literal directory tree, built once per ontology load
+  groupBy: 'feature' | 'folder'   // Ontology Map grouping: inferred Feature vs real folder structure
   selectedId: string | null
-  expanded: Set<string>       // component ids expanded to module/file level
+  expanded: Set<string>       // component/folder ids expanded to their next level
   maxLevel: number            // 3=components, 4=modules, 5=files, 6=external
   showRelationships: boolean
   showImpact: boolean
@@ -44,6 +47,7 @@ interface OntoState {
   toggleExpand: (id: string) => void
   expandAll: () => void
   collapseAll: () => void
+  setGroupBy: (g: OntoState['groupBy']) => void
   setMaxLevel: (n: number) => void
   setShowRelationships: (b: boolean) => void
   setShowImpact: (b: boolean) => void
@@ -80,6 +84,8 @@ function buildIndex(root: Ontology): Map<string, IndexEntry> {
 export const useOnto = create<OntoState>()((set, get) => ({
   ontology: null,
   index: new Map(),
+  folderTree: null,
+  groupBy: 'feature',
   selectedId: null,
   expanded: new Set(),
   maxLevel: 6,
@@ -93,7 +99,7 @@ export const useOnto = create<OntoState>()((set, get) => ({
   showHotspots: false,
   panelTab: 'overview',
 
-  load: (o) => set({ ontology: o, index: buildIndex(o) }),
+  load: (o) => set({ ontology: o, index: buildIndex(o), folderTree: buildFolderTree(o) }),
   select: (id) => set({ selectedId: id, panelTab: 'overview' }),
   toggleExpand: (id) => {
     const expanded = new Set(get().expanded)
@@ -102,7 +108,12 @@ export const useOnto = create<OntoState>()((set, get) => ({
     set({ expanded })
   },
   expandAll: () => {
-    const { ontology } = get()
+    const { ontology, folderTree, groupBy } = get()
+    if (groupBy === 'folder') {
+      if (!folderTree) return
+      set({ expanded: new Set(allFolderIds(folderTree)) })
+      return
+    }
     if (!ontology) return
     const all = new Set<string>()
     for (const f of ontology.children ?? [])
@@ -110,6 +121,7 @@ export const useOnto = create<OntoState>()((set, get) => ({
     set({ expanded: all })
   },
   collapseAll: () => set({ expanded: new Set() }),
+  setGroupBy: (g) => set({ groupBy: g, expanded: new Set() }),
   setMaxLevel: (n) => set({ maxLevel: n }),
   setShowRelationships: (b) => set({ showRelationships: b }),
   setShowImpact: (b) => set({ showImpact: b }),

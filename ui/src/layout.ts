@@ -6,10 +6,36 @@ import { RELATION_STYLE } from './types'
  * The hierarchy is a tree, so no general graph layout library is needed. */
 
 const CARD_W: Record<string, number> = {
-  product: 400, feature: 210, component: 220, module: 210, filestack: 210, external: 190,
+  product: 400, feature: 210, component: 220, module: 210, filestack: 210,
+  symbolstack: 210, external: 190,
 }
 const GAP = 36
-const BAND_Y = { product: 0, feature: 210, component: 430, module: 660, filestack: 855, external: 1120 }
+const BAND_Y = {
+  product: 0, feature: 210, component: 430, module: 660, filestack: 855,
+  symbolstack: 1080, external: 1350,
+}
+
+/** Per-file "+" drills one level past File to its symbols (functions/methods/
+ * classes - already in schema v2, no new data needed). Shared by both the
+ * Feature and Folder layouts since FileStackNode itself is shared. */
+function placeExpandedSymbols(
+  files: OntoNode[], startX: number, y: number, expanded: Set<string>,
+  nodes: Node[], edges: Edge[], stackId: string,
+): void {
+  let x = startX
+  for (const f of files) {
+    if (!expanded.has(f.id) || !f.symbols?.length) continue
+    const symId = `${f.id}__symbols`
+    nodes.push({
+      id: symId, type: 'symbolstack',
+      position: { x, y },
+      data: { symbols: f.symbols, fileName: f.name, ownerId: f.id },
+      className: 'onto-node',
+    })
+    edges.push(edgeFor(`h_${f.id}_symbols`, stackId, symId, 'contains', { label: f.name }))
+    x += CARD_W.symbolstack + GAP
+  }
+}
 
 export interface LayoutResult {
   nodes: Node[]
@@ -143,24 +169,28 @@ export function layoutOntology(
               edges.push(edgeFor(`h_${vc.node.id}_${m.id}`, vc.node.id, m.id, 'contains'))
               if (maxLevel >= 5) {
                 const files = (m.children ?? []).filter((ch) => ch.type === 'File')
+                const stackId = `${m.id}__files`
                 nodes.push({
-                  id: `${m.id}__files`, type: 'filestack',
+                  id: stackId, type: 'filestack',
                   position: { x: mx, y: BAND_Y.filestack },
                   data: { files, ownerId: m.id },
                   className: 'onto-node' + impactClass(vc.node.id),
                 })
-                edges.push(edgeFor(`h_${m.id}_files`, m.id, `${m.id}__files`, 'contains'))
+                edges.push(edgeFor(`h_${m.id}_files`, m.id, stackId, 'contains'))
+                placeExpandedSymbols(files, mx, BAND_Y.symbolstack, expanded, nodes, edges, stackId)
               }
               mCursor += CARD_W.module + GAP
             }
           } else if (maxLevel >= 5 && vc.directFiles.length > 0) {
+            const stackId = `${vc.node.id}__files`
             nodes.push({
-              id: `${vc.node.id}__files`, type: 'filestack',
+              id: stackId, type: 'filestack',
               position: { x: cx, y: BAND_Y.module },
               data: { files: vc.directFiles, ownerId: vc.node.id },
               className: 'onto-node' + impactClass(vc.node.id),
             })
-            edges.push(edgeFor(`h_${vc.node.id}_files`, vc.node.id, `${vc.node.id}__files`, 'contains'))
+            edges.push(edgeFor(`h_${vc.node.id}_files`, vc.node.id, stackId, 'contains'))
+            placeExpandedSymbols(vc.directFiles, cx, BAND_Y.filestack, expanded, nodes, edges, stackId)
           }
         }
         cCursor += cw + GAP

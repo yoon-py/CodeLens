@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { Handle, Position } from '@xyflow/react'
 import type { NodeProps } from '@xyflow/react'
-import type { External, OntoNode } from './types'
+import type { External, FileSymbol, OntoNode } from './types'
+import type { FolderNode as FolderNodeData } from './folderLayout'
 import { useOnto } from './store'
 
 /** Custom cards for each ontology level. All follow the mockup pattern:
@@ -137,11 +138,45 @@ export function ModuleNode({ data }: NodeProps) {
   )
 }
 
+export function FolderNode({ data }: NodeProps) {
+  const { node, stats, expanded, expandable } = data as {
+    node: FolderNodeData; stats: { files: number; loc: number }; expanded: boolean; expandable: boolean
+  }
+  const toggleExpand = useOnto((s) => s.toggleExpand)
+  return (
+    <div className="card card-folder">
+      <Handle type="target" position={Position.Top} className="h" />
+      <Handle type="source" position={Position.Bottom} className="h" />
+      <div className="card-head">
+        <Chip level="folder" glyph="📁" />
+        <div>
+          <div className="card-title">{node.name}</div>
+          <span className="badge badge-folder">Folder · EXTRACTED</span>
+        </div>
+        {expandable && (
+          <button
+            className="expand-btn"
+            title={expanded ? 'collapse' : 'expand'}
+            onClick={(e) => { e.stopPropagation(); toggleExpand(node.id) }}
+          >
+            {expanded ? '−' : '+'}
+          </button>
+        )}
+      </div>
+      <div className="card-meta">
+        {stats.files} files · {formatLoc(stats.loc)}
+      </div>
+    </div>
+  )
+}
+
 const STACK_LIMIT = 3
 
 export function FileStackNode({ data }: NodeProps) {
   const { files } = data as { files: OntoNode[]; ownerId: string }
   const select = useOnto((s) => s.select)
+  const expanded = useOnto((s) => s.expanded)
+  const toggleExpand = useOnto((s) => s.toggleExpand)
   const [showAll, setShowAll] = useState(false)
   const sorted = [...files].sort((a, b) => (b.loc ?? 0) - (a.loc ?? 0))
   const shown = showAll ? sorted : sorted.slice(0, STACK_LIMIT)
@@ -151,12 +186,23 @@ export function FileStackNode({ data }: NodeProps) {
       <Handle type="target" position={Position.Top} className="h" />
       {shown.map((f) => {
         const lang = langOf(f.name)
+        const hasSymbols = (f.symbols?.length ?? 0) > 0
+        const fileExpanded = expanded.has(f.id)
         return (
           <div key={f.id} className="file-chip file-chip-btn" title={f.path ?? f.name}
                onClick={(e) => { e.stopPropagation(); select(f.id) }}>
             <span className="file-lang" style={{ background: lang.color }}>{lang.label}</span>
             <span className="file-name">{f.name}</span>
             <span className="file-loc">{formatLoc(f.loc ?? 0)}</span>
+            {hasSymbols && (
+              <button
+                className="file-expand-btn"
+                title={fileExpanded ? 'hide symbols' : `show ${f.symbols!.length} symbols`}
+                onClick={(e) => { e.stopPropagation(); toggleExpand(f.id) }}
+              >
+                {fileExpanded ? '−' : '+'}
+              </button>
+            )}
           </div>
         )
       })}
@@ -168,6 +214,24 @@ export function FileStackNode({ data }: NodeProps) {
         <div className="file-chip file-more"
              onClick={(e) => { e.stopPropagation(); setShowAll(false) }}>collapse ↑</div>
       )}
+      <Handle type="source" position={Position.Bottom} className="h" />
+    </div>
+  )
+}
+
+export function SymbolStackNode({ data }: NodeProps) {
+  const { symbols, fileName } = data as { symbols: FileSymbol[]; fileName: string; ownerId: string }
+  const sorted = [...symbols].sort((a, b) => (a.line ?? 0) - (b.line ?? 0))
+  return (
+    <div className="filestack symbolstack">
+      <Handle type="target" position={Position.Top} className="h" />
+      <div className="symbolstack-label">{fileName} · {symbols.length} symbols</div>
+      {sorted.map((s, i) => (
+        <div key={`${s.name}_${i}`} className="file-chip symbol-chip">
+          <span className="symbol-name">{s.name}</span>
+          {s.line != null && <span className="file-loc">L{s.line}</span>}
+        </div>
+      ))}
     </div>
   )
 }
@@ -197,6 +261,8 @@ export const nodeTypes = {
   feature: FeatureNode,
   component: ComponentNode,
   module: ModuleNode,
+  folder: FolderNode,
   filestack: FileStackNode,
+  symbolstack: SymbolStackNode,
   external: ExternalNode,
 }

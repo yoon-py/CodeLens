@@ -30,11 +30,22 @@ lensme addresses each from the same ontology.
 ### 🗺️ UNDERSTAND — the human stays in command
 
 The person, not just the model, needs to see the system. The ontology renders
-as an interactive banded map (Product → Feature → Component), a living
-`ARCHITECTURE.md` you can commit and regenerate, change-impact ("what breaks
-if I touch this?"), and git hotspots that surface hidden coupling. Every node
-carries an honest confidence tag — `EXTRACTED` (structural fact) vs
-`INFERRED` (a guess, labelled as one) — so you always know what's real.
+as an interactive banded map, a living `ARCHITECTURE.md` you can commit and
+regenerate, change-impact ("what breaks if I touch this?"), and git hotspots
+that surface hidden coupling. Every node carries an honest confidence tag —
+`EXTRACTED` (structural fact) vs `INFERRED` (a guess, labelled as one) — so
+you always know what's real.
+
+The map has two lenses over the same data (`Group: Feature | Folder` in the
+toolbar): **Feature** groups by inferred business domain (`INFERRED-heuristic`
+- can be wrong, see the [screen/page fix](#validated-against-external-repos));
+**Folder** groups by literal directory structure - 100% `EXTRACTED`, nothing
+guessed, so it's the always-trustworthy cross-check. Either lens drills all
+the way down: folder → subfolder → file → **symbols** (functions/methods/
+classes, with line numbers) via a "+" on each level, so the same call/import
+detail codebase-memory-mcp's 3D graph shows is readable as a structured tree
+instead of a physics simulation - same information, laid out for a human
+instead of a force-directed layout algorithm.
 
 > This is the point of the whole thing: as agents write more, the human's
 > ability to comprehend and review has to keep up. The map is that leverage.

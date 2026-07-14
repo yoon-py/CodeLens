@@ -11,6 +11,7 @@
   --c-feature: #d946ef;
   --c-component: #22d3ee;
   --c-module: #34d399;
+  --c-folder: #38bdf8;
   --c-file: #f59e0b;
   --c-external: #f87171;
   --c-database: #60a5fa;
@@ -169,6 +170,7 @@ body {
 .card-feature { width: 210px; border-color: color-mix(in srgb, var(--c-feature) 55%, var(--border)); }
 .card-component { width: 220px; border-color: color-mix(in srgb, var(--c-component) 55%, var(--border)); }
 .card-module { width: 210px; border-color: color-mix(in srgb, var(--c-module) 55%, var(--border)); }
+.card-folder { width: 210px; border-color: color-mix(in srgb, var(--c-folder) 55%, var(--border)); }
 .card-external { width: 190px; border-color: color-mix(in srgb, var(--c-external) 55%, var(--border)); border-style: dashed; }
 
 .card-head { display: flex; gap: 9px; align-items: flex-start; }
@@ -185,6 +187,7 @@ body {
 .chip-feature { background: var(--c-feature); color: #fff; }
 .chip-component { background: var(--c-component); }
 .chip-module { background: var(--c-module); }
+.chip-folder { background: var(--c-folder); }
 .chip-file { background: var(--c-file); }
 .chip-external { background: var(--c-external); }
 .chip-database { background: var(--c-database); }
@@ -198,6 +201,7 @@ body {
 .badge-feature { background: rgba(217, 70, 239, 0.18); color: #f0abfc; }
 .badge-component { background: rgba(34, 211, 238, 0.15); color: #67e8f9; }
 .badge-module { background: rgba(52, 211, 153, 0.15); color: #6ee7b7; }
+.badge-folder { background: rgba(56, 189, 248, 0.15); color: #7dd3fc; }
 .badge-file { background: rgba(245, 158, 11, 0.15); color: #fcd34d; }
 .badge-external { background: rgba(248, 113, 113, 0.15); color: #fca5a5; }
 
@@ -213,6 +217,14 @@ body {
   font-size: 14px; line-height: 1; cursor: pointer;
 }
 .expand-btn:hover { border-color: var(--c-component); }
+
+.file-expand-btn {
+  margin-left: auto; flex-shrink: 0;
+  width: 18px; height: 18px; border-radius: 5px;
+  background: #131b30; color: var(--text); border: 1px solid var(--border);
+  font-size: 12px; line-height: 1; cursor: pointer;
+}
+.file-expand-btn:hover { border-color: #a78bfa; }
 
 .conf-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
 .conf-heuristic { background: #f59e0b; }
@@ -235,6 +247,11 @@ body {
 .file-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .file-loc { color: var(--text-faint); font-size: 10px; flex-shrink: 0; }
 .file-more { justify-content: center; color: var(--text-dim); border-style: dashed; }
+
+.symbolstack { border: 1px dashed color-mix(in srgb, #a78bfa 40%, var(--border)); border-radius: 10px; padding: 6px; }
+.symbolstack-label { font-size: 10px; color: var(--text-faint); padding: 0 3px 4px; }
+.symbol-chip { border-color: color-mix(in srgb, #a78bfa 40%, var(--border)); cursor: default; }
+.symbol-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: ui-monospace, monospace; font-size: 10.5px; }
 
 /* ---------- detail panel ---------- */
 .panel {

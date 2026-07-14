@@ -5,6 +5,7 @@ import {
 import type { NodeMouseHandler } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { layoutOntology } from './layout'
+import { layoutFolderMap } from './folderLayout'
 import { nodeTypes } from './nodes'
 import { fileBlastRadius, useOnto } from './store'
 import { Sidebar } from './Sidebar'
@@ -15,11 +16,14 @@ import type { Hotspots, Ontology } from './types'
 
 const MINIMAP_COLOR: Record<string, string> = {
   product: '#8b5cf6', feature: '#d946ef', component: '#22d3ee',
-  module: '#34d399', filestack: '#f59e0b', external: '#f87171',
+  module: '#34d399', folder: '#38bdf8', filestack: '#f59e0b',
+  symbolstack: '#a78bfa', external: '#f87171',
 }
 
 function Canvas() {
   const onto = useOnto((s) => s.ontology)
+  const folderTree = useOnto((s) => s.folderTree)
+  const groupBy = useOnto((s) => s.groupBy)
   const expanded = useOnto((s) => s.expanded)
   const maxLevel = useOnto((s) => s.maxLevel)
   const showRelationships = useOnto((s) => s.showRelationships)
@@ -58,7 +62,9 @@ function Canvas() {
 
   const { nodes, edges } = useMemo(() => {
     if (!onto) return { nodes: [], edges: [] }
-    const res = layoutOntology(onto, expanded, maxLevel, showRelationships, impactSets)
+    const res = groupBy === 'folder' && folderTree
+      ? layoutFolderMap(onto, folderTree, expanded, showRelationships, impactSets)
+      : layoutOntology(onto, expanded, maxLevel, showRelationships, impactSets)
     const pathNodes = pathResult ? new Set(pathResult.nodes) : null
     const pathEdges = pathResult ? new Set(pathResult.edgeKeys.map((k) => `r_${k}`)) : null
     // churn -> heat bucket 1..4, normalized against the hottest component
@@ -85,13 +91,14 @@ function Canvas() {
           : e
       )),
     }
-  }, [onto, expanded, maxLevel, showRelationships, impactSets, selectedId, pathResult, hotspots, showHotspots])
+  }, [onto, folderTree, groupBy, expanded, maxLevel, showRelationships, impactSets,
+      selectedId, pathResult, hotspots, showHotspots])
 
   // refit when the visible structure changes materially
   useEffect(() => {
     const t = setTimeout(() => fitView({ padding: 0.15, duration: 250 }), 60)
     return () => clearTimeout(t)
-  }, [maxLevel, onto, fitView])
+  }, [maxLevel, groupBy, onto, fitView])
 
   // smooth-pan to the selected node (relationship/impact clicks jump the map to it);
   // files live inside a filestack node, so fall back to the stack that holds them

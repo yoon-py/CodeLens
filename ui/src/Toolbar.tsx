@@ -12,6 +12,8 @@ export function Toolbar() {
   const onto = useOnto((s) => s.ontology)
   const maxLevel = useOnto((s) => s.maxLevel)
   const setMaxLevel = useOnto((s) => s.setMaxLevel)
+  const groupBy = useOnto((s) => s.groupBy)
+  const setGroupBy = useOnto((s) => s.setGroupBy)
   const showImpact = useOnto((s) => s.showImpact)
   const setShowImpact = useOnto((s) => s.setShowImpact)
   const setSearchOpen = useOnto((s) => s.setSearchOpen)
@@ -31,10 +33,18 @@ export function Toolbar() {
                 onClick={() => openInGraph(null)}>Code Graph</button>
       </div>
       {view === 'map' && <>
-        <select className="toolbar-select" value={maxLevel}
-                onChange={(e) => setMaxLevel(Number(e.target.value))}>
-          {LEVEL_OPTIONS.map((o) => <option key={o.v} value={o.v}>{o.label}</option>)}
+        <select className="toolbar-select" value={groupBy}
+                title="Feature: inferred business domain. Folder: literal directory structure (100% EXTRACTED, no guessing)."
+                onChange={(e) => setGroupBy(e.target.value as 'feature' | 'folder')}>
+          <option value="feature">Group: Feature</option>
+          <option value="folder">Group: Folder</option>
         </select>
+        {groupBy === 'feature' && (
+          <select className="toolbar-select" value={maxLevel}
+                  onChange={(e) => setMaxLevel(Number(e.target.value))}>
+            {LEVEL_OPTIONS.map((o) => <option key={o.v} value={o.v}>{o.label}</option>)}
+          </select>
+        )}
         <button className="mini-btn" onClick={() => fitView({ padding: 0.15, duration: 300 })}>
           Fit View
         </button>
